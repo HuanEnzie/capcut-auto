@@ -1,6 +1,6 @@
 # Quy tắc thiết kế giao diện
 
-Nguồn chân lý: **`DESIGN.md`** ở gốc dự án (Duolingo style reference).
+Nguồn chân lý: **`docs/DESIGN.md`** (Duolingo style reference).
 Toàn bộ token đã được chép vào khối `:root{}` đầu file `ui.html`.
 
 > **Sửa giao diện thì sửa token trước.** Đừng hardcode màu/kích thước rải rác —

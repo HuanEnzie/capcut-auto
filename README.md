@@ -78,9 +78,14 @@ python audio_balance.py 1107_short04_v7 --dry       # xem trước
 | `agent.py` | Chế độ Agent: vòng lặp tool + trí nhớ hội thoại |
 | `shorts/gemini_util.py` | Gọi Gemini có retry + xoay tua model |
 | **`docs/WORKFLOW.md`** | **Toàn bộ workflow + cơ chế vận hành (đọc cái này trước)** |
-| `DESIGN.md` | Style reference (nguồn chân lý về giao diện) |
+| `docs/DESIGN.md` | Style reference (nguồn chân lý về giao diện) |
 | `docs/UI.md` | Quy tắc thiết kế giao diện — đọc trước khi sửa `ui.html` |
 | `docs/APP_DESIGN.md` | Thiết kế chi tiết |
+
+**Đường dẫn CapCut tự dò**, không cấu hình tay: đọc `currentCustomDraftPath` trong
+`<CapCut>/User Data/Config/globalSetting` (bắt được cả khi bạn đổi thư mục draft sang ổ
+khác), có `CapCut`/`JianyingPro`, `LOCALAPPDATA`/`APPDATA`. Cần chỉ định tay thì đặt
+`CAPCUT_DRAFTS_ROOT`. Một chỗ duy nhất: `assetlib.find_capcut()`.
 
 **Lưu ý:** đóng CapCut trước khi ghi vào draft (draft đang mở có `.locked`, app sẽ báo).
 Mọi thao tác ghi đều có backup (`.prebalance.bak`, `.prefix.bak`).
@@ -153,8 +158,8 @@ python capcut_batch.py "<thư mục cha>" --yes --model small --prefix "AUTO_"
 | **capcut_build.py** | Dựng 1 draft (hạt nhân) |
 | **capcut_batch.py** | Dựng hàng loạt 100 folder |
 | capcut_auto.py | Tiện ích draft (list/texts/clone/set-text) |
-| extract_templates.py, inspect_*.py | Bóc/khảo sát cấu trúc JSON (tham khảo) |
-| drstone_script.txt | Kịch bản mẫu (test) |
+| ffmpeg_render.py | Render thẳng ra MP4, không qua CapCut (nhánh phụ) |
+| `tools/` | Script khảo sát cấu trúc JSON dùng một lần + dữ liệu mẫu — không phần nào của app import chúng |
 
 ## Ghi chú kỹ thuật (cấu trúc caption template)
 Mỗi caption = 1 `text_template_subtitle` (mảng `text_templates`, giữ `resource_id` template)
