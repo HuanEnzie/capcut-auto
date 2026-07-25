@@ -744,7 +744,16 @@ def chat(session: str, user_text: str, model: str = "gemini-2.5-flash",
             tools=[types.Tool(function_declarations=_declarations(types, active))],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             max_output_tokens=4000)
-        resp, _used = gemini_util.generate_raw(client, model, contents=contents, config=cfg)
+        try:
+            resp, _used = gemini_util.generate_raw(client, model, contents=contents, config=cfg,
+                                                   chain=gemini_util.FALLBACKS_CHAT)
+        except gemini_util.HetHanNgach as e:
+            # Nói ĐÚNG nguyên nhân. Trước đây lỗi hạ tầng rơi vào câu "tôi gọi tool
+            # hơi nhiều lượt" — người dùng đi sửa câu lệnh trong khi vấn đề là quota.
+            reply = "Hết hạn ngạch Gemini rồi. " + str(e).split("—")[0].strip()
+            _save(session, "model", reply)
+            return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan,
+                    "het_han_ngach": True}
         cand = (resp.candidates or [None])[0]
         if not cand or not cand.content or not cand.content.parts:
             # Gemini thỉnh thoảng trả candidate RỖNG. Trước đây break ngay -> người
