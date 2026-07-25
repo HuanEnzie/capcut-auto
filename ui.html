@@ -91,7 +91,8 @@ body{
   background:var(--color-eager-green);display:grid;place-items:center;color:#fff}
 .side .brand b{font-family:var(--font-feather);font-size:17px;font-weight:800;
   color:var(--color-charcoal);line-height:1.15;display:block}
-.side .brand span{font-size:11px;font-weight:700;color:var(--color-pencil-gray);
+/* chỉ dòng phụ mới IN HOA — để cả khối thì tên app bị hoa theo */
+.side .brand .sub{font-size:11px;font-weight:700;color:var(--color-pencil-gray);
   text-transform:uppercase;letter-spacing:var(--tracking-nav-label)}
 .side .grp{font-size:11px;font-weight:700;color:var(--color-faded-gray);
   text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
@@ -103,6 +104,7 @@ body{
   color:var(--color-charcoal);background:transparent;border:0;border-radius:var(--radius);
   padding:9px 12px;cursor:pointer;line-height:1.2;
 }
+.side nav button[hidden]{display:none}   /* display:flex đè mất thuộc tính hidden */
 .side nav button svg{width:18px;height:18px;flex:0 0 18px;stroke:currentColor;fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
 .side nav button:hover{background:#f4f4f4}
@@ -333,7 +335,7 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
 <aside class="side">
   <div class="brand">
     <span class="mark"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M9 7.5 18 12l-9 4.5z"/></svg></span>
-    <span style="min-width:0"><b>CapCut Auto</b><span>Editor</span></span>
+    <span style="min-width:0"><b>CapCut Auto</b><span class="sub">Editor</span></span>
     <button id="railBtn" title="Thu gọn thanh bên" aria-label="Thu gọn thanh bên">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
