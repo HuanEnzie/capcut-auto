@@ -98,6 +98,27 @@ Từ cùng dữ liệu đó rút ra **luật dựng** (rule store) thay cho vi�
 **Không có** CSDL catalog nào trong CapCut (đã quét: 0 file SQLite ngoài cache) → phải tự
 dựng inventory và tự hợp nhất.
 
+### Đau thật của người dùng: tải thử rồi không dùng, mà KHÔNG XOÁ ĐƯỢC
+
+> "Thi thoảng tôi edit cũng tải thử vài nhãn dán, hiệu ứng, linh tinh khác nhưng lại không
+> dùng cho bản final, nhưng lại không xoá được." — 25/07/2026
+
+CapCut không có chỗ nào để gỡ tài nguyên đã tải. Đây là việc app làm được ngay, và là tính
+năng CapCut **không có**. Nguyên tắc thi hành (đã cài trong `capcut_inventory.py`):
+
+1. **Cách ly, không xoá thẳng.** Gói được chuyển sang `quarantine/<lô>/` kèm manifest, hoàn
+   tác một nút. Đã kiểm chứng trả về **khớp byte-for-byte** (140 file / 2.970.219 byte /
+   cùng sha256). Xoá hẳn là hành động riêng, người dùng phải bấm lần nữa.
+2. **Kiểm tra lại ngay trước khi chuyển**, không tin bản quét cũ — người dùng có thể vừa
+   dùng gói đó xong.
+3. **Quét đệ quy cả timeline lồng** (`<draft>/Timelines/<guid>/draft_content.json` — 25
+   draft nhưng 46 file). Bỏ sót là kết luận nhầm "chưa dùng" rồi xoá mất đồ đang dùng.
+4. **Từ chối chạy khi CapCut đang mở.**
+5. **Không đụng sticker / hiệu ứng chữ / transition** kể cả khi chưa dùng — đó là đồ editor
+   có thể cần. Chỉ nhắm nhóm *làm đẹp · chưa rõ · filter*.
+
+Trên máy dev: dọn được **232 gói · 282 MB** mà không mất gì đang dùng.
+
 ### Dashboard trả lời được những câu CapCut không trả lời
 - Đã tải 448 MB, thật sự dùng bao nhiêu? Xoá được bao nhiêu?
 - Tài nguyên nào tải về rồi bỏ xó 6 tháng?

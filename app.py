@@ -450,6 +450,43 @@ def api_inventory_scan():
                            lambda log: capcut_inventory.rebuild(log))}
 
 
+@app.get("/api/cleanup")
+def api_cleanup(kinds: str = ""):
+    """Xem trước: dọn được bao nhiêu, gồm những gì. KHÔNG đụng vào đĩa."""
+    rows = capcut_inventory.cleanup_candidates(kinds)
+    return {"n": len(rows), "size": sum(r["size"] for r in rows),
+            "capcut_running": capcut_inventory.capcut_running(),
+            "batches": capcut_inventory.batches(),
+            "rows": rows[:40]}
+
+
+@app.post("/api/cleanup/quarantine")
+def api_cleanup_quarantine(kinds: str = ""):
+    """Chuyển gói chưa dùng sang khu cách ly (hoàn tác được), chạy nền."""
+    rows = capcut_inventory.cleanup_candidates(kinds)
+    if not rows:
+        raise HTTPException(400, "không có gói nào để dọn")
+    rids = [r["resource_id"] for r in rows]
+    return {"job": run_job(f"Dọn {len(rids)} gói chưa dùng",
+                           lambda log: capcut_inventory.quarantine(rids, log))}
+
+
+@app.post("/api/cleanup/undo")
+def api_cleanup_undo(batch: str):
+    try:
+        return capcut_inventory.undo(batch)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/cleanup/purge")
+def api_cleanup_purge(batch: str):
+    try:
+        return capcut_inventory.purge(batch)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/api/overview")
 def api_overview():
     """Việc đang dở, tính từ dữ liệu thật — để người dùng biết cần làm gì tiếp."""

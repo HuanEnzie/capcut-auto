@@ -15,7 +15,7 @@ thiếu: quét thẳng cache của CapCut để biết trên máy đang có sẵ
   python capcut_inventory.py --stats         # số liệu tóm tắt
   python capcut_inventory.py --unused 20     # có sẵn mà chưa dùng
 """
-import argparse, json, time
+import argparse, json, shutil, subprocess, time
 from pathlib import Path
 
 import assetlib
@@ -150,17 +150,24 @@ def scan_cache() -> dict:
 
 
 def scan_drafts() -> dict:
-    """Tài nguyên ĐÃ DÙNG trong draft — nguồn duy nhất có tên hiển thị thật."""
+    """Tài nguyên ĐÃ DÙNG trong draft — nguồn duy nhất có tên hiển thị thật.
+
+    Quét ĐỆ QUY: ngoài `<draft>/draft_content.json`, CapCut còn giữ timeline lồng
+    ở `<draft>/Timelines/<guid>/draft_content.json` (trên máy dev: 25 draft nhưng
+    46 file). Bỏ sót chúng là kết luận nhầm "chưa dùng" — mà kết luận đó dùng để
+    quyết định XOÁ, nên sai là hỏng draft của người dùng.
+    """
     dr = assetlib.draft_root()
     out = {}
-    for p in sorted(dr.iterdir()) if dr.is_dir() else []:
-        f = p / "draft_content.json"
-        if not f.is_file():
-            continue
+    if not dr.is_dir():
+        return out
+    for f in sorted(dr.rglob("draft_content.json")):
         try:
             c = json.loads(f.read_text(encoding="utf-8", errors="replace"))
         except (ValueError, OSError):
             continue
+        rel = f.relative_to(dr).parts
+        draft_name = rel[0] if rel else f.parent.name
         mt = f.stat().st_mtime
         for bucket, items in (c.get("materials") or {}).items():
             if not isinstance(items, list):
@@ -172,7 +179,7 @@ def scan_drafts() -> dict:
                 r = out.setdefault(rid, {"used_count": 0, "drafts": set(),
                                          "name_display": "", "kind_real": "", "last_used": 0})
                 r["used_count"] += 1
-                r["drafts"].add(p.name)
+                r["drafts"].add(draft_name)
                 r["last_used"] = max(r["last_used"], mt)
                 if m.get("name") and not r["name_display"]:
                     r["name_display"] = m["name"]
@@ -269,6 +276,123 @@ def rows(kind: str = "", used: str = "", q: str = "", limit: int = 60) -> list:
     return out
 
 
+# ─────────────────── DỌN TÀI NGUYÊN TẢI THỬ RỒI KHÔNG DÙNG ───────────────────
+# CapCut không cho xoá tài nguyên đã tải: bấm thử vài sticker/hiệu ứng là chúng
+# nằm lại trên đĩa vĩnh viễn. App dọn hộ, nhưng KHÔNG xoá thẳng:
+#   1. chuyển vào khu CÁCH LY (hoàn tác được) — xoá hẳn là việc riêng, người dùng bấm sau
+#   2. chỉ đụng gói dùng 0 lần, tính trên MỌI draft kể cả timeline lồng
+#   3. kiểm tra lại ngay trước khi chuyển, không tin số liệu đã quét từ lâu
+#   4. từ chối chạy khi CapCut đang mở
+QUARANTINE = assetlib.ROOT / "quarantine"
+
+
+def capcut_running() -> bool:
+    """CapCut đang mở thì không đụng vào cache của nó."""
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True,
+                             text=True, timeout=20, errors="replace").stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return False        # không kiểm tra được thì để bước xác nhận của người dùng lo
+    return any(k in out for k in ("capcut.exe", "jianyingpro.exe"))
+
+
+def cleanup_candidates(kinds: str = "", limit: int = 500) -> list:
+    """Gói có thể dọn: có trong cache, chưa dùng ở bất kỳ draft nào, không phải
+    module nội bộ của CapCut."""
+    return [r for r in rows(kind=kinds, used="no", limit=limit) if r["cache_dir"]]
+
+
+def quarantine(rids: list, log=print) -> dict:
+    """Chuyển gói sang khu cách ly. Trả thông tin lô để hoàn tác."""
+    if capcut_running():
+        raise RuntimeError("CapCut đang mở — đóng hẳn CapCut rồi dọn, "
+                           "xoá cache lúc nó đang chạy dễ làm CapCut lỗi.")
+    log("Kiểm tra lại xem gói nào thật sự chưa dùng…")
+    used = scan_drafts()                       # kiểm tra TƯƠI, không tin bản quét cũ
+    cc = assetlib.cache_root()
+    batch = time.strftime("%Y%m%d-%H%M%S")
+    dest_root = QUARANTINE / batch
+    moved, skipped, freed = [], [], 0
+    for rid in rids:
+        if rid in used:
+            skipped.append({"rid": rid, "vi_sao": f"đang dùng ở {len(used[rid]['drafts'])} draft"})
+            log(f"  bỏ qua {rid}: đang được dùng")
+            continue
+        if is_internal(rid):
+            skipped.append({"rid": rid, "vi_sao": "module nội bộ của CapCut"})
+            continue
+        src = next((cc / d / rid for d in ("effect", "artistEffect") if (cc / d / rid).is_dir()), None)
+        if not src:
+            skipped.append({"rid": rid, "vi_sao": "không còn trong cache"})
+            continue
+        size = sum(f.stat().st_size for f in src.rglob("*") if f.is_file())
+        dest = dest_root / src.parent.name / rid
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(assetlib.lp(src), assetlib.lp(dest))   # gói effect vượt MAX_PATH
+        except OSError as e:
+            skipped.append({"rid": rid, "vi_sao": f"lỗi chuyển: {e}"})
+            continue
+        moved.append({"rid": rid, "cache_dir": src.parent.name, "size": size})
+        freed += size
+        log(f"  đã cách ly {rid} ({size/1e6:.1f} MB)")
+    if moved:
+        (dest_root / "manifest.json").write_text(json.dumps(
+            {"batch": batch, "ts": time.time(), "items": moved, "freed": freed},
+            ensure_ascii=False, indent=1), encoding="utf-8")
+        rebuild(log=lambda *_: None)           # số liệu dashboard phải khớp lại ngay
+    log(f"Xong: cách ly {len(moved)} gói, giải phóng {freed/1e6:.0f} MB"
+        + (f", bỏ qua {len(skipped)}" if skipped else ""))
+    return {"batch": batch if moved else None, "moved": len(moved),
+            "freed": freed, "skipped": skipped}
+
+
+def batches() -> list:
+    """Các lô đang nằm trong khu cách ly."""
+    out = []
+    for d in sorted(QUARANTINE.iterdir(), reverse=True) if QUARANTINE.is_dir() else []:
+        f = d / "manifest.json"
+        if f.is_file():
+            try:
+                m = json.loads(f.read_text(encoding="utf-8"))
+                out.append({"batch": m["batch"], "ts": m["ts"],
+                            "n": len(m["items"]), "freed": m["freed"]})
+            except (ValueError, OSError, KeyError):
+                pass
+    return out
+
+
+def undo(batch: str, log=print) -> dict:
+    """Trả gói về đúng chỗ trong cache CapCut."""
+    d = QUARANTINE / batch
+    if not (d / "manifest.json").is_file():
+        raise RuntimeError("không thấy lô cách ly này")
+    m = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+    cc = assetlib.cache_root()
+    n = 0
+    for it in m["items"]:
+        src, dest = d / it["cache_dir"] / it["rid"], cc / it["cache_dir"] / it["rid"]
+        if src.is_dir() and not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(assetlib.lp(src), assetlib.lp(dest))
+            n += 1
+    shutil.rmtree(assetlib.lp(d), ignore_errors=True)
+    rebuild(log=lambda *_: None)
+    log(f"Đã trả {n} gói về CapCut")
+    return {"restored": n}
+
+
+def purge(batch: str, log=print) -> dict:
+    """Xoá HẲN một lô đã cách ly. Không hoàn tác được."""
+    d = QUARANTINE / batch
+    if not (d / "manifest.json").is_file():
+        raise RuntimeError("không thấy lô cách ly này")
+    m = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+    shutil.rmtree(assetlib.lp(d), ignore_errors=True)
+    log(f"Đã xoá hẳn {len(m['items'])} gói ({m['freed']/1e6:.0f} MB)")
+    return {"purged": len(m["items"]), "freed": m["freed"]}
+
+
 def _mb(n):
     return f"{(n or 0)/1e6:.0f} MB"
 
@@ -278,6 +402,11 @@ def main():
     ap.add_argument("--scan", action="store_true", help="quét lại và ghi vào library.db")
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--unused", type=int, metavar="N", help="N gói có sẵn mà chưa dùng")
+    ap.add_argument("--clean", metavar="LOẠI", help="cách ly gói chưa dùng thuộc LOẠI "
+                    "(vd 'làm đẹp' hoặc 'làm đẹp,chưa rõ'). Hoàn tác được bằng --undo")
+    ap.add_argument("--batches", action="store_true", help="xem các lô đã cách ly")
+    ap.add_argument("--undo", metavar="LÔ", help="trả một lô về lại CapCut")
+    ap.add_argument("--purge", metavar="LÔ", help="xoá HẲN một lô (không hoàn tác được)")
     a = ap.parse_args()
     if a.scan:
         rebuild()
@@ -296,7 +425,24 @@ def main():
         for r in rows(used="no", limit=a.unused):
             nm = r["name_display"] or r["name_internal"] or r["resource_id"]
             print(f"  {_mb(r['size']):>8}  {r['kind_guess']:<14} {nm[:46]}")
-    if not (a.scan or a.stats or a.unused):
+    if a.clean:
+        cand = cleanup_candidates(a.clean)
+        tot = sum(r["size"] for r in cand)
+        print(f"\n{len(cand)} gói '{a.clean}' chưa dùng · {_mb(tot)}")
+        if cand and input("Cách ly (hoàn tác được)? [y/N] ").strip().lower() == "y":
+            print(json.dumps(quarantine([r["resource_id"] for r in cand]),
+                             ensure_ascii=False))
+    if a.batches:
+        b = batches()
+        print("\nCác lô đang cách ly:" if b else "\nKhu cách ly trống.")
+        for x in b:
+            print(f"  {x['batch']}  {x['n']:>4} gói  {_mb(x['freed']):>8}"
+                  f"  {time.strftime('%d/%m %H:%M', time.localtime(x['ts']))}")
+    if a.undo:
+        print(undo(a.undo))
+    if a.purge:
+        print(purge(a.purge))
+    if not any((a.scan, a.stats, a.unused, a.clean, a.batches, a.undo, a.purge)):
         ap.print_help()
 
 

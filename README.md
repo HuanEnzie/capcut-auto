@@ -37,7 +37,7 @@ Biến đã có sẵn trong môi trường vẫn được ưu tiên hơn file. *
 ### 5 tab (chế độ Thủ công)
 | Tab | Làm gì |
 |---|---|
-| **Tổng quan** | Việc đang dở + kiểm kê tài nguyên CapCut **có sẵn trên máy** (đã dùng / chưa dùng / theo loại) |
+| **Tổng quan** | Việc đang dở + kiểm kê tài nguyên CapCut **có sẵn trên máy** (đã dùng / chưa dùng / theo loại) + **dọn gói tải thử không dùng** (CapCut không cho xoá; app cách ly, hoàn tác được) |
 | **Kho tài nguyên** | Thống kê kho, gu từng editor (ai dùng gì nhiều), cài tài nguyên thiếu vào CapCut |
 | **Draft** | Chụp mốc → xem editor sửa gì → đồng bộ về kho |
 | **Âm thanh** | Đo LUFS từng nguồn, cân bằng & ghi thẳng vào draft |
@@ -58,6 +58,9 @@ Biến đã có sẵn trong môi trường vẫn được ưu tiên hơn file. *
 ```bash
 python capcut_inventory.py --scan                   # kiểm kê tài nguyên CapCut trên máy
 python capcut_inventory.py --unused 20              # có sẵn mà chưa dùng
+python capcut_inventory.py --clean "làm đẹp"        # cách ly gói chưa dùng (hoàn tác được)
+python capcut_inventory.py --batches                # xem lô đã cách ly
+python capcut_inventory.py --undo 20260725-164019   # trả lô về lại CapCut
 python assetlib.py --stats                          # xem kho
 python draft_scan.py --harvest 0715 --owner nguyen  # nạp draft vào kho
 python draft_diff.py --diff 1107_short04_v7         # editor sửa gì

@@ -554,6 +554,9 @@ async function loadOver(){
     </div>
 
     ${chuaQuet ? '' : `
+    <h2>Dọn tài nguyên tải thử rồi không dùng</h2>
+    <div id="cleanBox"></div>
+
     <h2>Có sẵn mà chưa dùng — thử ngay không cần tải</h2>
     <div class="row">
       <label class="fld"><span>Loại</span><select id="invKind">
@@ -576,7 +579,74 @@ async function loadOver(){
     $('#invKind').onchange = e => { INV_KIND = e.target.value; PREF.set('invKind', INV_KIND); invRows(); };
     invRows(inv.rows);
   }
+  if($('#cleanBox')) cleanBox();
 }
+
+/* CapCut KHÔNG cho xoá tài nguyên đã tải: bấm thử vài sticker là chúng nằm lại
+   trên đĩa vĩnh viễn. App dọn hộ — nhưng chuyển vào khu CÁCH LY hoàn tác được,
+   không xoá thẳng, vì đây là dữ liệu của người dùng chứ không phải rác của ta. */
+const CLEAN_KINDS = 'làm đẹp,chưa rõ,filter';
+async function cleanBox(){
+  const box = $('#cleanBox'); if(!box) return;
+  box.innerHTML = '<p class="muted small">Đang tính…</p>';
+  try{
+    const d = await api('/api/cleanup?kinds=' + encodeURIComponent(CLEAN_KINDS));
+    const lo = d.batches.map(b=>`<tr>
+        <td class="mono">${esc(b.batch)}</td><td class="mono">${b.n} gói</td>
+        <td class="mono">${MB(b.freed)}</td><td class="mono muted">${vnTime(b.ts*1000)}</td>
+        <td class="actions">
+          <button class="btn ghost sm" data-act="cleanUndo" data-batch="${esc(b.batch)}">Trả lại CapCut</button>
+          <button class="btn danger sm" data-act="cleanPurge" data-batch="${esc(b.batch)}">Xoá hẳn</button>
+        </td></tr>`).join('');
+    box.innerHTML = `
+      <p class="muted small">Nhắm vào nhóm <b>làm đẹp · chưa rõ · filter</b> — thứ CapCut tự tải
+        hoặc bạn bấm thử rồi không dùng cho bản final. Sticker/hiệu ứng chữ/transition
+        <b>không đụng tới</b>, kể cả khi chưa dùng, vì đó là đồ bạn có thể cần.
+        Gói đang dùng trong bất kỳ draft nào (kể cả timeline lồng) luôn được giữ.</p>
+      <div class="row">
+        <button class="btn" id="btnClean" ${d.n && !d.capcut_running ? '' :
+          `disabled title="${d.capcut_running?'Đóng CapCut trước đã':'Không có gì để dọn'}"`}>
+          Dọn ${d.n} gói · ${MB(d.size)}</button>
+        <span class="muted small">${d.capcut_running
+          ? '<span class="neg">CapCut đang mở — đóng hẳn rồi dọn.</span>'
+          : 'Gói được chuyển sang khu cách ly, hoàn tác bất cứ lúc nào.'}</span>
+      </div>
+      ${lo?`<div class="wrap" style="margin-top:12px"><table>
+        <thead><tr><th>Lô đã cách ly</th><th>Số gói</th><th>Dung lượng</th><th>Lúc</th><th></th></tr></thead>
+        <tbody>${lo}</tbody></table></div>`:''}`;
+    const b = $('#btnClean');
+    if(b) b.onclick = async () => {
+      if(!await modal({title:`Dọn ${d.n} gói (${MB(d.size)})?`, body:
+        'Gói được CHUYỂN sang khu cách ly trong thư mục app, không xoá khỏi đĩa.\n'
+        + 'Cần lại thì bấm "Trả lại CapCut" — đã kiểm chứng trả về khớp byte-for-byte.\n\n'
+        + 'App sẽ kiểm tra lại một lần nữa ngay trước khi chuyển, gói nào đang dùng sẽ được giữ.',
+        actions:[{label:'Dọn', value:true}, {label:'Huỷ', value:false, style:'ghost'}]})) return;
+      await busy(b, 'Đang dọn…', async () => {
+        try{
+          const r = await api('/api/cleanup/quarantine?kinds=' + encodeURIComponent(CLEAN_KINDS), {method:'POST'});
+          toast('Đang dọn…'); JOB_DONE_CB[r.job] = () => { if(!$('#over').hidden) guard('#over', loadOver); };
+          startPolling();
+        }catch(e){ toast(String(e), true); }
+      });
+    };
+  }catch(e){ box.innerHTML = `<p class="neg">${esc(e)}</p>`; }
+}
+ACTIONS.cleanUndo = (d, el) => busy(el, 'Đang trả…', async () => {
+  try{ const r = await api(`/api/cleanup/undo?batch=${encodeURIComponent(d.batch)}`, {method:'POST'});
+       toast(`Đã trả ${r.restored} gói về CapCut`); guard('#over', loadOver); }
+  catch(e){ toast(String(e), true); }
+});
+ACTIONS.cleanPurge = async (d, el) => {
+  if(!await modal({title:'Xoá hẳn lô này?', body:
+    `Lô ${d.batch} sẽ bị xoá khỏi đĩa. KHÔNG hoàn tác được.\n`
+    + 'Nếu sau này cần lại, phải vào CapCut tải lại từ đầu.',
+    actions:[{label:'Xoá hẳn', value:true, style:'danger'}, {label:'Giữ lại', value:false, style:'ghost'}]})) return;
+  await busy(el, 'Đang xoá…', async () => {
+    try{ const r = await api(`/api/cleanup/purge?batch=${encodeURIComponent(d.batch)}`, {method:'POST'});
+         toast(`Đã xoá hẳn ${r.purged} gói · giải phóng ${MB(r.freed)}`); guard('#over', loadOver); }
+    catch(e){ toast(String(e), true); }
+  });
+};
 /* Mặc định lọc bỏ "làm đẹp" và "chưa rõ": 144 gói makeup chiếm 60% dung lượng mà
    editor short-form không bao giờ đụng — để lẫn vào thì bảng gợi ý thành vô dụng. */
 async function invRows(pre){
