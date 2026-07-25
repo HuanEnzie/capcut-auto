@@ -142,10 +142,37 @@ Trên máy dev: dọn được **232 gói · 282 MB** mà không mất gì đang
 | Tóm tắt định kỳ | Không có cơ chế nén lịch sử dài. |
 | Chủ động | Không bao giờ tự nói "3 draft đã 2 tuần chưa đồng bộ về kho". |
 
-### Đề xuất
-Tách bộ nhớ làm 3 loại, agent tự ghi khi phát hiện: **sự việc** (đã làm gì, khi nào) ·
-**sở thích/luật** (Đan thích font X) · **quyết định** (đã chốt bỏ Pexels cho tuyến B).
-Cộng thêm tool đọc dashboard + rule store để tư vấn có căn cứ chứ không đoán.
+### Đã làm (25/07/2026) — trí nhớ hai tầng
+
+API là **stateless**: mỗi lượt phải gửi lại toàn bộ hội thoại. Đo bằng `count_tokens`
+trên chính app: phần cố định (system prompt + khai báo tool) **1.467 token**; một câu
+người dùng **11-30 token**; một **kết quả tool 420 token**.
+
+> Thứ làm phình bối cảnh là **dữ liệu tool**, không phải lời nói chuyện. Từ đó ra
+> nguyên tắc cắt: dữ liệu tool **lấy lại được** (gọi tool lần nữa), lời người dùng thì
+> **không** — nên cắt dữ liệu tool trước, giữ lời người dùng đến cùng.
+
+| Tầng | Nội dung | Xử lý |
+|---|---|---|
+| 1 — `memory` | sở thích · quyết định · sự kiện, **xuyên cuộc** | không bao giờ nén; bơm thẳng vào system prompt để không bị cắt mất |
+| 2 — transcript | lời qua tiếng lại + dữ liệu tool | cắt theo **token** (không theo số dòng); dữ liệu tool cũ thu thành dấu vết kèm mốc giờ |
+
+Kích hoạt nén **bằng code** khi vượt ngưỡng, KHÔNG để model tự gọi tool nén: model sẽ
+quên gọi lúc cần hoặc gọi lúc không nên, mà cái mất là ngữ cảnh — không lấy lại được.
+
+Đo trên phiên giả lập 60 dòng: **9.510 → 2.931 token** khi cắt (giữ nguyên **20/20** câu
+người dùng), rồi **→ ~1.500 token** sau khi nén, tóm tắt vẫn giữ đúng `1107_t1_dan` và
+các con số.
+
+**Cổng chất lượng cho bản nén.** Lần chạy đầu bản tóm tắt bị cắt cụt giữa câu và mất sạch
+mã định danh — do Gemini 2.5 tính cả token *suy nghĩ* vào `max_output_tokens`. Tóm tắt
+hỏng thì bối cảnh hỏng **vĩnh viễn**, nên: tắt thinking cho lời gọi này, và **từ chối lưu**
+bản tóm tắt nếu cụt hoặc mất hết mã định danh (cùng bài học "không cache kết quả tệ" ở
+mục 9.6 của `WORKFLOW.md`).
+
+### Còn lại
+Agent đọc được dashboard + rule store để tư vấn có căn cứ; tự rút sở thích từ vòng học
+thay vì chỉ ghi khi người dùng nói thẳng.
 
 ---
 

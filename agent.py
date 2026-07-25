@@ -11,9 +11,9 @@ KIẾN TRÚC — vì sao KHÔNG có intent classifier đứng trước:
   hội 503) và thêm một kiểu hỏng TỆ HƠN: phân loại sai thì tool đúng không còn
   trong tầm với, model buộc phải bịa — đúng cái ảo giác mà nó định chống.
 
-  Đo trên chính app này: system prompt 783 ký tự (~244 token) + 12 khai báo tool
-  (~820 token) = ~1.064 token cố định mỗi lượt, trên cửa sổ 1 triệu token. Chưa
-  có gì để mà "chia để trị".
+  Đo bằng count_tokens của Gemini trên chính app này: system prompt + toàn bộ khai
+  báo tool = ~1.467 token cố định mỗi lượt, trên cửa sổ 1 triệu. Chưa có gì để mà
+  "chia để trị".
 
   Cách mở rộng khi tool nhiều lên: nạp sẵn nhóm cốt lõi + một tool TRA TOOL
   (`tim_tool`). Model tự tra khi cần thứ ngoài tầm với, tool tìm được sẽ được
@@ -23,8 +23,14 @@ KIẾN TRÚC — vì sao KHÔNG có intent classifier đứng trước:
     1. kiểm tra + CHUẨN HOÁ tham số ("Đan" -> "dan"), sai thì trả kèm giá trị hợp lệ
     2. lưu tool đã gọi + dữ liệu tool trả về vào lịch sử (lượt sau còn nhớ)
     3. việc phá huỷ không tự chạy — trả về đề xuất để người dùng bấm xác nhận
+
+TRÍ NHỚ hai tầng (API stateless, mỗi lượt phải gửi lại tất cả -> phải có ngân sách):
+  Tầng 1 `memory`  — điều bền vững, XUYÊN cuộc, không bao giờ nén, bơm vào system prompt
+  Tầng 2 transcript — cắt theo TOKEN. Dữ liệu tool cũ thu thành dấu vết (lấy lại được
+                      bằng cách gọi tool lần nữa); lời người dùng giữ đến cùng.
+  Quá ngưỡng thì nén phần cũ thành tóm tắt — kích hoạt bằng CODE, không để model tự gọi.
 """
-import json, sqlite3, time, unicodedata
+import json, re, sqlite3, time, unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -50,7 +56,9 @@ Nguyên tắc:
 - Cần một việc mà chưa thấy tool phù hợp: gọi tim_tool để tra, đừng bảo là không làm được.
 - Việc nặng chạy nền: báo đã khởi động và bảo người dùng xem mục Tiến trình.
 - Việc có thể mất dữ liệu sẽ trả về {"can_xac_nhan": true}: nói rõ hậu quả và bảo
-  người dùng bấm nút xác nhận, KHÔNG khẳng định là đã làm xong."""
+  người dùng bấm nút xác nhận, KHÔNG khẳng định là đã làm xong.
+- Biết thêm điều BỀN VỮNG (editor thích gì, đã chốt cách làm nào) thì gọi ghi_nho một
+  câu ngắn. Đừng ghi số liệu tra được bằng tool — số liệu đổi, tra lại là có."""
 
 
 # ═══════════════════════ REGISTRY ═══════════════════════
@@ -322,6 +330,31 @@ def _balance(draft: str, run_job=None):
     return {"da_khoi_dong": True, "job": r["job"]}
 
 
+@tool("ghi_nho",
+      "Ghi lại một điều BỀN VỮNG để nhớ sang các cuộc trò chuyện sau: sở thích của editor, "
+      "quyết định đã chốt, việc quan trọng đã làm. Chỉ ghi thứ còn đúng lâu dài — "
+      "KHÔNG ghi số liệu tra được bằng tool (số liệu thay đổi, tra lại là có).",
+      nhom="he_thong",
+      tham_so={"type": "object", "properties": {
+          "loai": {"type": "string", "description": "so_thich | quyet_dinh | su_kien"},
+          "noi_dung": {"type": "string", "description": "một câu ngắn, cụ thể"},
+          "ve": {"type": "string", "description": "chủ thể, vd 'dan', 'du_an:1107', bỏ trống nếu chung"}},
+       "required": ["loai", "noi_dung"]})
+def _ghi_nho(loai: str, noi_dung: str, ve: str = ""):
+    if loai not in LOAI_NHO:
+        return {"loi": f"loại không hợp lệ: {loai}", "gia_tri_hop_le": list(LOAI_NHO)}
+    return nho(loai, noi_dung, ve)
+
+
+@tool("doc_tri_nho", "Đọc lại những điều đã ghi nhớ từ các cuộc trò chuyện trước.",
+      nhom="he_thong",
+      tham_so={"type": "object", "properties": {
+          "ve": {"type": "string", "description": "lọc theo chủ thể, vd 'dan'"},
+          "loai": {"type": "string", "description": "so_thich | quyet_dinh | su_kien"}}})
+def _doc_tri_nho(ve: str = "", loai: str = ""):
+    return {"da_nho": doc_nho(ve, loai, limit=30)}
+
+
 @tool("tim_tool",
       "Tra xem có tool nào làm được việc đang cần. Dùng khi việc người dùng yêu cầu không "
       "khớp tool nào đang có. Trả về tên + mô tả tool, sau đó gọi thẳng tool đó.",
@@ -399,6 +432,25 @@ def goi_tool(ten: str, args: dict, run_job=None, cho_phep_nguy_hiem=False) -> di
 
 # ═══════════════════════ TRÍ NHỚ ═══════════════════════
 
+# API là STATELESS: mỗi lượt phải gửi lại toàn bộ hội thoại. Nên bối cảnh không
+# phải thứ "có sẵn" mà là thứ ta DỰNG LẠI mỗi lượt — và phải dựng có ngân sách.
+#
+# Đo trên chính app này (count_tokens của Gemini):
+#   system prompt + 14 khai báo tool = 1.467 token cố định
+#   một câu người dùng ~11-30 token, một KẾT QUẢ TOOL ~420 token
+# -> thứ làm phình bối cảnh là DỮ LIỆU TOOL, không phải lời nói chuyện.
+#
+# Từ đó ra nguyên tắc cắt: dữ liệu tool LẤY LẠI ĐƯỢC (gọi tool lần nữa), lời người
+# dùng thì KHÔNG. Nên cắt dữ liệu tool trước, giữ lời người dùng đến cùng.
+CHU_TREN_TOKEN = 2.5        # đo được 2,50-3,31; lấy mức thấp nhất để không ước lượng thiếu
+NGAN_SACH_LICH_SU = 6000    # token tối đa cho phần lịch sử mỗi lượt
+GIU_NGUYEN_VAN = 8          # số dòng gần nhất luôn giữ nguyên văn, không đụng tới
+NGUONG_NEN = 4000           # quá ngần này token thì nén phần cũ lại
+TRI_NHO_BOM_VAO = 12        # số mẩu ký ức dài hạn bơm sẵn vào mỗi lượt
+
+uoc_token = lambda s: int(len(str(s)) / CHU_TREN_TOKEN) + 1
+
+
 def _init_db():
     c = assetlib.conn()
     c.execute("CREATE TABLE IF NOT EXISTS chat("
@@ -408,8 +460,61 @@ def _init_db():
     c.execute("CREATE TABLE IF NOT EXISTS tool_log("
               "id INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT, tool TEXT,"
               " co_loi INTEGER, ts REAL)")
+    # TẦNG 1 của trí nhớ: điều bền vững, XUYÊN cuộc trò chuyện, KHÔNG BAO GIỜ bị nén.
+    # Tóm tắt bằng LLM giỏi giữ ý nhưng ăn mất '1107_t4_nguyen' và '-14 LUFS' —
+    # nên thứ cần nhớ chính xác phải nằm riêng, có cấu trúc, truy vấn được.
+    c.execute("CREATE TABLE IF NOT EXISTS memory("
+              "id INTEGER PRIMARY KEY AUTOINCREMENT, loai TEXT, ve TEXT, noi_dung TEXT,"
+              " session TEXT, ts REAL, lan_nhac INTEGER DEFAULT 1)")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_mem ON memory(loai, ve, noi_dung)")
+    # Bản tóm tắt phần cũ để BẢNG RIÊNG, không chèn vào chat: chèn vào chat thì nó
+    # mang id mới nhất, tức tóm tắt phần CŨ lại nằm CUỐI — đảo ngược trình tự.
+    c.execute("CREATE TABLE IF NOT EXISTS chat_summary("
+              "session TEXT PRIMARY KEY, content TEXT, den_id INTEGER, ts REAL)")
     c.commit()
     return c
+
+
+# ─────────── TẦNG 1: trí nhớ dài hạn, xuyên cuộc ───────────
+
+LOAI_NHO = ("so_thich", "quyet_dinh", "su_kien")
+
+
+def nho(loai: str, noi_dung: str, ve: str = "", session: str = "") -> dict:
+    c = _init_db()
+    c.execute("INSERT INTO memory(loai,ve,noi_dung,session,ts) VALUES(?,?,?,?,?) "
+              "ON CONFLICT(loai,ve,noi_dung) DO UPDATE SET ts=excluded.ts, lan_nhac=lan_nhac+1",
+              (loai, ve or "", noi_dung.strip(), session, time.time()))
+    c.commit(); c.close()
+    return {"da_ghi_nho": noi_dung.strip(), "loai": loai, "ve": ve or "(chung)"}
+
+
+def doc_nho(ve: str = "", loai: str = "", limit: int = 20) -> list:
+    c = _init_db()
+    w, a = [], []
+    if ve:
+        w.append("ve=?"); a.append(ve)
+    if loai:
+        w.append("loai=?"); a.append(loai)
+    sql = "SELECT loai,ve,noi_dung,ts,lan_nhac FROM memory"
+    if w:
+        sql += " WHERE " + " AND ".join(w)
+    rows = [dict(r) for r in c.execute(sql + " ORDER BY lan_nhac DESC, ts DESC LIMIT ?",
+                                       a + [limit]).fetchall()]
+    c.close()
+    return rows
+
+
+def _khoi_tri_nho(gioi_han_chu: int = 1200) -> str:
+    """Bơm ký ức vào SYSTEM PROMPT chứ không vào lịch sử — để nó không bị cắt hay
+    nén mất, và để agent không phải nhớ gọi tool mới nhớ ra."""
+    ms = doc_nho(limit=TRI_NHO_BOM_VAO)
+    if not ms:
+        return ""
+    dong = [f"- [{m['loai']}] " + (f"{m['ve']}: " if m["ve"] else "") + m["noi_dung"] for m in ms]
+    khoi = "\n".join(dong)[:gioi_han_chu]
+    return ("\n\nĐÃ BIẾT (nhớ từ các cuộc trò chuyện trước, dùng được ngay, "
+            "không cần hỏi lại):\n" + khoi)
 
 
 def history(session: str, limit: int = 40) -> list:
@@ -469,6 +574,127 @@ def reset(session: str):
     c.commit(); c.close()
 
 
+# ─────────── TẦNG 2: transcript thô — cắt theo TOKEN, không theo số dòng ───────────
+
+def _stub_tool(noi_dung: str, ts: float) -> str:
+    """Dữ liệu tool cũ thu về một dòng: giữ việc ĐÃ TRA GÌ, bỏ số liệu.
+
+    Số liệu cũ nằm lại trong bối cảnh còn nguy hiểm hơn là mất: lượt 3 tra được
+    '26 tài nguyên', tới lượt 30 kho đã đổi mà model vẫn thấy câu đó và trả lời
+    theo số cũ. Bỏ số, giữ dấu vết + mốc giờ, và nói rõ muốn chắc thì tra lại."""
+    try:
+        ten = json.loads(noi_dung).get("tool", "tool")
+    except (ValueError, TypeError):
+        ten = "tool"
+    gio = time.strftime("%H:%M %d/%m", time.localtime(ts or time.time()))
+    return (f"[đã tra {ten} lúc {gio} — số liệu chi tiết đã bỏ khỏi bối cảnh, "
+            f"gọi lại {ten} nếu cần con số chính xác]")
+
+
+def _tom_tat(session: str):
+    c = _init_db()
+    r = c.execute("SELECT content, den_id FROM chat_summary WHERE session=?", (session,)).fetchone()
+    c.close()
+    return dict(r) if r else None
+
+
+def _rows_cho_boi_canh(session: str, limit: int = 300) -> list:
+    """Dòng thô CHƯA nằm trong bản tóm tắt."""
+    tt = _tom_tat(session)
+    c = _init_db()
+    rows = [dict(r) for r in c.execute(
+        "SELECT id, role, content, ts FROM chat WHERE session=? AND id>? ORDER BY id",
+        (session, (tt or {}).get("den_id", 0))).fetchall()][-limit:]
+    c.close()
+    return rows
+
+
+def dung_lich_su(session: str, ngan_sach: int = NGAN_SACH_LICH_SU) -> list:
+    """Dựng lại lịch sử trong NGÂN SÁCH token. Thứ tự hy sinh:
+       1. dữ liệu tool cũ  ->  thu thành một dòng dấu vết (lấy lại được bằng cách gọi lại)
+       2. dòng cũ nhất     ->  bỏ hẳn (lẽ ra đã được nén thành tóm tắt trước đó)
+       Lời người dùng trong GIU_NGUYEN_VAN dòng gần nhất: không bao giờ đụng.
+    """
+    rows = _rows_cho_boi_canh(session)
+    n = len(rows)
+    ra, tong = [], 0
+    tt = _tom_tat(session)
+    if tt:
+        tong += uoc_token(tt["content"])
+    for i in range(n - 1, -1, -1):                # đi ngược từ mới nhất
+        r = rows[i]
+        moi = (n - i) <= GIU_NGUYEN_VAN
+        noi_dung = r["content"] if (moi or r["role"] != "tool") \
+            else _stub_tool(r["content"], r["ts"])
+        gia = uoc_token(noi_dung)
+        if tong + gia > ngan_sach and not moi:
+            break                                  # hết ngân sách, dừng ở đây
+        ra.append({"role": r["role"], "content": noi_dung})
+        tong += gia
+    ra.reverse()
+    if tt:      # tóm tắt phần cũ luôn đứng ĐẦU, đúng trình tự thời gian
+        ra.insert(0, {"role": "summary", "content": tt["content"]})
+    return ra
+
+
+def _nen_neu_can(session: str, client, model: str) -> dict | None:
+    """Nén phần CŨ thành một bản tóm tắt. Kích hoạt bằng CODE khi vượt ngưỡng,
+    KHÔNG để model tự gọi: model sẽ quên gọi lúc cần hoặc gọi lúc không nên, mà
+    cái mất là ngữ cảnh — không lấy lại được."""
+    rows = _rows_cho_boi_canh(session)
+    if len(rows) <= GIU_NGUYEN_VAN + 4:
+        return None
+    tho = sum(uoc_token(r["content"]) for r in rows)
+    if tho <= NGUONG_NEN:
+        return None
+
+    cu = rows[:-GIU_NGUYEN_VAN]
+    van = "\n".join(f"{r['role']}: {r['content'][:600]}" for r in cu)
+    from google.genai import types
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "shorts"))
+    import gemini_util
+    nhac = ("Tóm tắt đoạn hội thoại dưới đây thành tối đa 8 gạch đầu dòng tiếng Việt. "
+            "BẮT BUỘC giữ nguyên tên dự án/draft/editor và các con số. Bỏ lời khách sáo, "
+            "bỏ dữ liệu tool chi tiết (tra lại được). Nêu rõ việc đã làm và điều đã chốt. "
+            "Trả lời thẳng bằng gạch đầu dòng, không mở bài.\n\n" + van)
+    try:
+        resp, _ = gemini_util.generate_raw(
+            client, model,
+            contents=[types.Content(role="user", parts=[types.Part.from_text(text=nhac)])],
+            # Gemini 2.5 tính CẢ token suy nghĩ vào max_output_tokens: để 800 thì phần
+            # trả lời bị cắt cụt giữa câu. Tóm tắt không cần suy nghĩ -> tắt hẳn.
+            config=types.GenerateContentConfig(
+                max_output_tokens=1200,
+                thinking_config=types.ThinkingConfig(thinking_budget=0)))
+        tom = "".join(p.text for p in resp.candidates[0].content.parts if getattr(p, "text", None))
+    except Exception:
+        return None                                # nén hỏng thì cứ để nguyên, không phá gì
+
+    # KHÔNG lưu bản tóm tắt tệ. Dự án này từng trả giá đúng kiểu lỗi đó: cache một
+    # kết quả rỗng rồi mọi lần sau dùng lại (WORKFLOW mục 9.6). Ở đây còn nặng hơn —
+    # tóm tắt hỏng thì bối cảnh cuộc trò chuyện hỏng vĩnh viễn, không lấy lại được.
+    tom = tom.strip()
+    ma_can_giu = set(re.findall(r"\b\d{3,4}_t\d+_\w+\b|\b\d{4}\b", van))
+    giu_duoc = sum(1 for m in ma_can_giu if m in tom)
+    if (len(tom) < 120 or tom.rstrip()[-1] not in ".!?\"')]}0123456789"
+            or (ma_can_giu and giu_duoc == 0)):
+        return {"bo_qua": "bản tóm tắt không đạt (cụt hoặc mất hết mã định danh) — giữ nguyên lịch sử thô",
+                "dai": len(tom), "ma_giu_duoc": f"{giu_duoc}/{len(ma_can_giu)}"}
+
+    cu_truoc = _tom_tat(session)
+    noi_dung = "[tóm tắt phần đầu cuộc trò chuyện]\n" + tom.strip()
+    if cu_truoc:      # nén lần hai: gộp vào bản cũ, không để hai bản rời nhau
+        noi_dung = cu_truoc["content"] + "\n" + noi_dung
+    c = _init_db()
+    c.execute("INSERT INTO chat_summary(session,content,den_id,ts) VALUES(?,?,?,?) "
+              "ON CONFLICT(session) DO UPDATE SET content=excluded.content, "
+              "den_id=excluded.den_id, ts=excluded.ts",
+              (session, noi_dung, cu[-1]["id"], time.time()))
+    c.commit(); c.close()
+    return {"da_nen": len(cu), "tu_token": tho, "den_id": cu[-1]["id"]}
+
+
 # ═══════════════════════ VÒNG LẶP AGENT ═══════════════════════
 
 def _declarations(types, active: set):
@@ -493,10 +719,13 @@ def chat(session: str, user_text: str, model: str = "gemini-2.5-flash",
     import gemini_util
 
     contents = []
-    for m in history(session):
+    for m in dung_lich_su(session):            # dựng trong ngân sách token, không lấy hết
         if m["role"] == "tool":
             contents.append(types.Content(role="user", parts=[types.Part.from_text(
                 text="[dữ liệu tool đã lấy ở lượt trước] " + m["content"])]))
+        elif m["role"] == "summary":
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(
+                text="[bối cảnh đã nén của cuộc trò chuyện này]\n" + m["content"])]))
         else:
             contents.append(types.Content(role="user" if m["role"] == "user" else "model",
                                           parts=[types.Part.from_text(text=m["content"])]))
@@ -506,22 +735,32 @@ def chat(session: str, user_text: str, model: str = "gemini-2.5-flash",
     client = genai.Client()
     active = _active_ban_dau()
     steps, cho_xac_nhan = [], None
+    sys_prompt = SYS + _khoi_tri_nho()         # ký ức dài hạn đi kèm prompt, khỏi bị nén mất
 
+    rong = 0
     for _ in range(max_steps):
         cfg = types.GenerateContentConfig(
-            system_instruction=SYS,
+            system_instruction=sys_prompt,
             tools=[types.Tool(function_declarations=_declarations(types, active))],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             max_output_tokens=4000)
         resp, _used = gemini_util.generate_raw(client, model, contents=contents, config=cfg)
         cand = (resp.candidates or [None])[0]
         if not cand or not cand.content or not cand.content.parts:
-            break
+            # Gemini thỉnh thoảng trả candidate RỖNG. Trước đây break ngay -> người
+            # dùng mất trắng cả lượt kèm câu "gọi tool nhiều quá" sai hoàn toàn.
+            rong += 1
+            if rong >= 2:
+                reply = "Gemini trả về rỗng hai lần liền — bạn gửi lại câu vừa rồi giúp nhé."
+                _save(session, "model", reply)
+                return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan}
+            continue
         calls = [p.function_call for p in cand.content.parts if getattr(p, "function_call", None)]
         if not calls:
             reply = "".join(p.text for p in cand.content.parts if getattr(p, "text", None)) or "…"
             _save(session, "model", reply)
-            return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan}
+            nen = _nen_neu_can(session, client, model)     # kích hoạt bằng CODE, không để model tự gọi
+            return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan, "da_nen": nen}
 
         contents.append(cand.content)
         parts = []
