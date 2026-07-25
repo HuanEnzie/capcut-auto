@@ -75,38 +75,76 @@ body{
 :focus-visible{outline:3px solid var(--color-spark-blue);outline-offset:2px;border-radius:var(--radius)}
 ::selection{background:var(--color-storybook-green)}
 
-/* ══════════════════ CHROME: header + nav ══════════════════ */
-header{
-  display:flex;align-items:center;gap:var(--spacing-16);flex-wrap:wrap;
-  padding:var(--spacing-16) var(--spacing-24);
-  border-bottom:var(--border-w) solid var(--color-hairline);
-  background:var(--color-paper-white);
+/* ══════════════════ KHUNG: sidebar + cột nội dung ══════════════════
+   Bốn tab nằm ngang cũ hết chỗ khi thêm khu vực mới, và không còn chỗ nào để
+   đặt danh sách hội thoại của Agent. Sidebar giải quyết cả hai: thêm mục là
+   thêm một dòng, và Agent có chỗ liệt kê các cuộc trò chuyện.  */
+.app{display:flex;min-height:100vh}
+.side{
+  width:248px;flex:0 0 248px;display:flex;flex-direction:column;
+  border-right:var(--border-w) solid var(--color-hairline);
+  background:var(--color-paper-white);position:sticky;top:0;height:100vh;
 }
-header .brand{font-family:var(--font-feather);font-weight:800;font-size:22px;color:var(--color-charcoal);letter-spacing:-.02em}
-header .tagline{color:var(--color-pencil-gray);font-size:var(--text-caption);line-height:var(--leading-caption)}
-.modeswitch{margin-left:auto;display:flex;gap:var(--spacing-8)}
-.modeswitch button{
-  font-family:var(--font-body);font-weight:var(--font-weight-bold);
-  font-size:var(--text-nav-label);text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
-  color:var(--color-pencil-gray);background:transparent;
-  border:var(--border-w) solid var(--color-faded-gray);border-radius:var(--radius);
-  padding:8px 16px;cursor:pointer;
+.side .brand{display:flex;align-items:center;gap:10px;padding:var(--spacing-16);
+  border-bottom:var(--border-w) solid var(--color-hairline)}
+.side .brand .mark{width:34px;height:34px;flex:0 0 34px;border-radius:var(--radius);
+  background:var(--color-eager-green);display:grid;place-items:center;color:#fff}
+.side .brand b{font-family:var(--font-feather);font-size:17px;font-weight:800;
+  color:var(--color-charcoal);line-height:1.15;display:block}
+.side .brand span{font-size:11px;font-weight:700;color:var(--color-pencil-gray);
+  text-transform:uppercase;letter-spacing:var(--tracking-nav-label)}
+.side .grp{font-size:11px;font-weight:700;color:var(--color-faded-gray);
+  text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
+  padding:var(--spacing-16) var(--spacing-16) 6px}
+.side nav{display:flex;flex-direction:column;gap:2px;padding:8px}
+.side nav button{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  font-family:var(--font-body);font-weight:var(--font-weight-bold);font-size:15px;
+  color:var(--color-charcoal);background:transparent;border:0;border-radius:var(--radius);
+  padding:9px 12px;cursor:pointer;line-height:1.2;
 }
-.modeswitch button.on{background:var(--color-eager-green);border-color:var(--color-eager-green);color:var(--color-paper-white)}
+.side nav button svg{width:18px;height:18px;flex:0 0 18px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.side nav button:hover{background:#f4f4f4}
+.side nav button.on{background:var(--color-storybook-green);color:var(--color-charcoal)}
+.side nav button.on svg{opacity:1}
+.side .scroll{flex:1;overflow-y:auto;min-height:0}
+.side .foot{border-top:var(--border-w) solid var(--color-hairline);padding:10px 12px;
+  display:flex;flex-direction:column;gap:8px}
+.side .foot a{font-size:var(--text-caption)}
 
-nav{display:flex;gap:var(--spacing-8);padding:var(--spacing-12) var(--spacing-24);
-    border-bottom:var(--border-w) solid var(--color-hairline);flex-wrap:wrap}
-nav[hidden]{display:none}                    /* display:flex đè mất thuộc tính hidden */
-nav button{
-  font-family:var(--font-body);font-weight:var(--font-weight-bold);
-  font-size:var(--text-nav-label);text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
-  color:var(--color-pencil-gray);background:transparent;border:0;border-radius:var(--radius);
-  padding:8px 14px;cursor:pointer;
-}
-nav button:hover{background:#f4f4f4}
-nav button.on{background:var(--color-storybook-green);color:var(--color-charcoal)}
+/* thu gọn còn thanh biểu tượng — màn hình hẹp hoặc người dùng tự bấm */
+.app.rail .side{width:60px;flex:0 0 60px}
+.app.rail .side .brand b, .app.rail .side .brand span,
+.app.rail .side nav button span, .app.rail .side .grp,
+.app.rail .side .foot a span, .app.rail #chatList{display:none}
+.app.rail .side nav button{justify-content:center;padding:10px 0}
+#railBtn{margin-left:auto;background:transparent;border:0;cursor:pointer;
+  color:var(--color-faded-gray);padding:4px;border-radius:8px;line-height:0}
+#railBtn:hover{background:#f4f4f4;color:var(--color-charcoal)}
+.app.rail #railBtn{transform:rotate(180deg)}
 
-main{max-width:var(--page-max-width);margin:0 auto;padding:var(--spacing-24)}
+.content{flex:1;min-width:0;display:flex;flex-direction:column}
+.page-head{padding:var(--spacing-24) var(--spacing-24) 0;max-width:var(--page-max-width);
+  margin:0 auto;width:100%}
+.page-head .eyebrow{font-size:11px;font-weight:700;color:var(--color-faded-gray);
+  text-transform:uppercase;letter-spacing:var(--tracking-nav-label)}
+.page-head h1{font-family:var(--font-feather);font-size:30px;line-height:1.2;font-weight:800;
+  color:var(--color-charcoal);margin:6px 0 4px}
+.page-head p{color:var(--color-pencil-gray);font-size:var(--text-caption);margin:0}
+main{max-width:var(--page-max-width);margin:0 auto;width:100%;padding:var(--spacing-24)}
+
+/* danh sách hội thoại của Agent, nằm trong sidebar như app chat quen thuộc */
+#chatList{display:flex;flex-direction:column;gap:2px;padding:0 8px 8px}
+#chatList button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  font-family:var(--font-body);font-size:var(--text-caption);font-weight:var(--font-weight-medium);
+  color:var(--color-charcoal);background:transparent;border:0;border-radius:var(--radius);
+  padding:8px 10px;cursor:pointer}
+#chatList button:hover{background:#f4f4f4}
+#chatList button.on{background:var(--color-storybook-green);font-weight:var(--font-weight-bold)}
+#chatList .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#chatList .x{opacity:0;color:var(--color-pencil-gray);flex:0 0 auto;font-weight:700;padding:0 2px}
+#chatList button:hover .x{opacity:1}
 
 /* ══════════════════ TYPO trong app ══════════════════ */
 h2{
@@ -152,6 +190,7 @@ select,input[type=text],input:not([type]){
   color:var(--color-charcoal);background:var(--color-paper-white);
   border:var(--border-w) solid var(--color-faded-gray);border-radius:var(--radius);padding:9px 12px;
 }
+input[type=checkbox]{width:17px;height:17px;accent-color:var(--color-eager-green);cursor:pointer;margin:0}
 label.fld{display:flex;flex-direction:column;gap:4px}
 label.fld>span{font-size:var(--text-caption);color:var(--color-pencil-gray);font-weight:var(--font-weight-bold)}
 
@@ -174,17 +213,17 @@ td.actions{white-space:nowrap;display:flex;gap:var(--spacing-8);flex-wrap:wrap}
 .tag.info{color:var(--color-spark-blue);border-color:var(--color-spark-blue)}
 .tag.bad{color:var(--color-danger);border-color:var(--color-danger)}
 
-/* chỉ báo job TOÀN CỤC: theo dõi được ở mọi tab, không phải quay về tab Dự án */
-#jobBadge{margin-left:auto;display:flex;align-items:center;gap:8px;cursor:pointer;
+/* chỉ báo job TOÀN CỤC: nằm dưới sidebar nên thấy được ở mọi khu vực, kể cả Agent */
+#jobBadge{display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;text-align:left;
   background:var(--color-storybook-green);border:var(--border-w) solid var(--color-eager-green);
-  border-radius:var(--radius);padding:7px 14px;font-family:var(--font-body);
-  font-size:var(--text-caption);font-weight:var(--font-weight-bold);color:var(--color-charcoal);max-width:340px}
+  border-radius:var(--radius);padding:8px 10px;font-family:var(--font-body);
+  font-size:var(--text-caption);font-weight:var(--font-weight-bold);color:var(--color-charcoal)}
 #jobBadge[hidden]{display:none}
 #jobBadge .spin{width:13px;height:13px;border:2.5px solid var(--color-eager-green);
   border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite;flex:0 0 auto}
 @keyframes sp{to{transform:rotate(360deg)}}
 #jobBadge .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#jobBadge+.modeswitch{margin-left:var(--spacing-12)}
+.app.rail #jobBadge .txt{display:none}
 
 /* thanh tiến trình thật (dữ liệu đã có sẵn trong log, chỉ là chưa dùng) */
 .prog{height:12px;border-radius:var(--radius);background:#f0f0f0;overflow:hidden;
@@ -277,56 +316,84 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
       background:transparent;cursor:pointer;font-family:var(--font-body)}
 .chip:hover{background:#f4fbff}
 
-@media(max-width:640px){
-  main{padding:var(--spacing-16)}
+@media(max-width:900px){          /* màn hẹp: sidebar tự co còn thanh biểu tượng */
+  .side{width:60px;flex:0 0 60px}
+  .side .brand b, .side .brand span, .side nav button span,
+  .side .grp, #chatList, #railBtn{display:none}
+  .side nav button{justify-content:center;padding:10px 0}
+  #jobBadge .txt{display:none}
+  main, .page-head{padding-left:var(--spacing-16);padding-right:var(--spacing-16)}
   .bub{max-width:92%}
-  header{gap:var(--spacing-8)}
-  .modeswitch{margin-left:0;width:100%}
 }
 </style>
 </head>
 <body>
 
-<header>
-  <div>
-    <div class="brand">CapCut Auto Editor</div>
-    <div class="tagline">kho tài nguyên tiến hoá theo gu editor · cân bằng âm thanh tự động</div>
+<div class="app" id="app">
+<aside class="side">
+  <div class="brand">
+    <span class="mark"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M9 7.5 18 12l-9 4.5z"/></svg></span>
+    <span style="min-width:0"><b>CapCut Auto</b><span>Editor</span></span>
+    <button id="railBtn" title="Thu gọn thanh bên" aria-label="Thu gọn thanh bên">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
   </div>
-  <button id="jobBadge" hidden></button>
-  <div class="modeswitch">
-    <button id="mManual" class="on">Thủ công</button>
-    <button id="mAgent">Agent</button>
+
+  <div class="scroll">
+    <div class="grp">Khu vực</div>
+    <nav id="navbar" role="tablist" aria-label="Khu vực làm việc">
+      <button data-t="over" class="on" role="tab" aria-controls="over" aria-selected="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tổng quan</span></button>
+      <button data-t="proj" role="tab" aria-controls="proj" aria-selected="false">
+        <svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="M2 16l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>Dự án</span></button>
+      <button data-t="draft" role="tab" aria-controls="draft" aria-selected="false">
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 10h20M2 14h20"/></svg><span>Draft</span></button>
+      <button data-t="audio" role="tab" aria-controls="audio" aria-selected="false">
+        <svg viewBox="0 0 24 24"><path d="M3 12h3l3-7 3 14 3-10 2 3h4"/></svg><span>Âm thanh</span></button>
+      <button data-t="lib" role="tab" aria-controls="lib" aria-selected="false">
+        <svg viewBox="0 0 24 24"><path d="M21 8v12H3V8"/><rect x="1" y="3" width="22" height="5"/><path d="M10 12h4"/></svg><span>Kho tài nguyên</span></button>
+    </nav>
+
+    <div class="grp">Trợ lý</div>
+    <nav>
+      <button id="mAgent">
+        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.8-.9L3 20.5l1.5-4.2a8.4 8.4 0 0 1 3.6-11.6 8.6 8.6 0 0 1 12.9 6.8z"/></svg><span>Agent chat</span></button>
+      <button id="btnNewChat" hidden>
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Trò chuyện mới</span></button>
+    </nav>
+    <div id="chatList"></div>
   </div>
-</header>
 
-<nav id="navbar" role="tablist" aria-label="Khu vực làm việc">
-  <button data-t="over" class="on" role="tab" aria-controls="over" aria-selected="true">Tổng quan</button>
-  <button data-t="proj" role="tab" aria-controls="proj" aria-selected="false">Dự án</button>
-  <button data-t="draft" role="tab" aria-controls="draft" aria-selected="false">Draft</button>
-  <button data-t="audio" role="tab" aria-controls="audio" aria-selected="false">Âm thanh</button>
-  <button data-t="lib" role="tab" aria-controls="lib" aria-selected="false">Kho tài nguyên</button>
-</nav>
+  <div class="foot">
+    <button id="jobBadge" hidden></button>
+    <a class="link small" id="mManual" style="display:none">← Về khu vực làm việc</a>
+  </div>
+</aside>
 
-<main>
-  <section id="over" role="tabpanel"></section>
-  <section id="proj" role="tabpanel" hidden></section>
-  <section id="draft" role="tabpanel" hidden></section>
-  <section id="audio" role="tabpanel" hidden></section>
-  <section id="lib" role="tabpanel" hidden></section>
-  <section id="agent" hidden>
-    <div class="row" style="justify-content:space-between">
-      <span class="muted small">Ra lệnh bằng tiếng Việt — agent tự chọn việc, tự hỏi khi thiếu thông tin, và nhớ ngữ cảnh.</span>
-      <button class="btn ghost sm" id="btnReset">Xoá hội thoại</button>
-    </div>
-    <div id="chat"></div>
-    <div class="row" style="margin-top:12px">
-      <input id="msg" style="flex:1;min-width:300px" aria-label="Câu lệnh cho agent"
-             placeholder="vd: dựng chủ đề điểm cao nhất của 2006 theo gu Đan">
-      <button class="btn" id="btnSend">Gửi</button>
-    </div>
-    <div class="chips" id="chips"></div>
-  </section>
-</main>
+<div class="content">
+  <div class="page-head">
+    <div class="eyebrow">CapCut Auto Editor</div>
+    <h1 id="pgTitle">Tổng quan</h1>
+    <p id="pgSub"></p>
+  </div>
+  <main>
+    <section id="over" role="tabpanel"></section>
+    <section id="proj" role="tabpanel" hidden></section>
+    <section id="draft" role="tabpanel" hidden></section>
+    <section id="audio" role="tabpanel" hidden></section>
+    <section id="lib" role="tabpanel" hidden></section>
+    <section id="agent" hidden>
+      <div id="chat"></div>
+      <div class="row" style="margin-top:12px">
+        <input id="msg" style="flex:1;min-width:300px" aria-label="Câu lệnh cho agent"
+               placeholder="vd: dựng chủ đề điểm cao nhất của 2006 theo gu Đan">
+        <button class="btn" id="btnSend">Gửi</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </section>
+  </main>
+</div>
+</div>
 
 <div id="toasts"></div>
 <div id="offline"><span class="dot"></span><span>Mất kết nối tới app — cửa sổ chạy <span class="mono">python app.py</span> còn mở không? Đang thử lại…</span></div>
@@ -477,30 +544,57 @@ const emptyBox = (title, hint) => `<div class="empty"><b>${esc(title)}</b>${esc(
    lại bị ném về tab Dự án là mất mạch việc. */
 const SECTS = ['over','proj','draft','audio','lib'];
 const LOADERS = {over:loadOver, proj:loadProj, draft:loadDrafts, audio:loadAudio, lib:loadLib};
+/* Tiêu đề trang nằm ở một chỗ: sidebar chỉ còn nhãn ngắn, câu giải thích "khu vực
+   này để làm gì" chuyển lên đầu trang — người mới mở app đọc là hiểu ngay. */
+const PAGES = {
+  over: ['Tổng quan', 'Việc đang dở và tài nguyên CapCut có sẵn trên máy này — số liệu thật.'],
+  proj: ['Dự án', 'Nạp record, chọn chủ đề, dựng draft theo gu từng editor.'],
+  draft:['Draft', 'Chụp mốc → editor sửa trong CapCut → đồng bộ về kho để app học gu.'],
+  audio:['Âm thanh', 'Đo LUFS từng nguồn rồi cân bằng theo chuẩn EBU R128.'],
+  lib:  ['Kho tài nguyên', 'Gu từng editor và cài tài nguyên còn thiếu vào CapCut.'],
+  agent:['Agent chat', 'Ra lệnh bằng tiếng Việt — agent tự chọn việc, tự hỏi khi thiếu thông tin, và nhớ ngữ cảnh.'],
+};
+function setPage(k){ $('#pgTitle').textContent = PAGES[k][0]; $('#pgSub').textContent = PAGES[k][1]; }
 let TAB = PREF.get('tab', 'over');
 function showTab(t){
   if(!LOADERS[t]) t = 'over';
-  TAB = t; PREF.set('tab', t);
-  document.querySelectorAll('nav button').forEach(x => {
+  TAB = t; PREF.set('tab', t); PREF.set('agent', false);
+  $('#navbar').querySelectorAll('button').forEach(x => {
     const on = x.dataset.t === t;
     x.classList.toggle('on', on); x.setAttribute('aria-selected', on);
   });
+  $('#mAgent').classList.remove('on');
+  $('#agent').hidden = true;
+  $('#btnNewChat').hidden = true;
+  $('#chatList').innerHTML = '';
+  $('#mManual').style.display = 'none';
   SECTS.forEach(s => $('#'+s).hidden = (s !== t));
+  setPage(t);
   guard('#'+t, LOADERS[t]);
 }
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+$('#navbar').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
 function setMode(agentMode){
-  PREF.set('agent', agentMode);
-  $('#mManual').classList.toggle('on', !agentMode);
-  $('#mAgent').classList.toggle('on', agentMode);
-  $('#navbar').hidden = agentMode;
-  $('#agent').hidden = !agentMode;
-  if(agentMode){ SECTS.forEach(t=>$('#'+t).hidden=true); loadChat(); }
-  else showTab(TAB);
+  if(!agentMode) return showTab(TAB);
+  PREF.set('agent', true);
+  $('#navbar').querySelectorAll('button').forEach(x => {
+    x.classList.remove('on'); x.setAttribute('aria-selected', false);
+  });
+  $('#mAgent').classList.add('on');
+  $('#btnNewChat').hidden = false;
+  $('#mManual').style.display = '';
+  SECTS.forEach(t => $('#'+t).hidden = true);
+  $('#agent').hidden = false;
+  setPage('agent');
+  loadChat(); loadChatList();
 }
 $('#mManual').onclick = ()=>setMode(false);
 $('#mAgent').onclick  = ()=>setMode(true);
 ACTIONS.retry = d => RETRY[d.sel] && RETRY[d.sel]();
+
+/* Thu gọn sidebar: máy dựng hay chạy CapCut cạnh app, ai cũng cần thêm bề ngang */
+function setRail(on){ $('#app').classList.toggle('rail', on); PREF.set('rail', on); }
+$('#railBtn').onclick = () => setRail(!$('#app').classList.contains('rail'));
+setRail(PREF.get('rail', false));
 
 /* ══════════════════ TAB: TỔNG QUAN ══════════════════
    Trả lời hai câu CapCut không trả lời được: "máy tôi đang có sẵn những gì?" và
@@ -586,11 +680,13 @@ async function loadOver(){
    trên đĩa vĩnh viễn. App dọn hộ — nhưng chuyển vào khu CÁCH LY hoàn tác được,
    không xoá thẳng, vì đây là dữ liệu của người dùng chứ không phải rác của ta. */
 const CLEAN_KINDS = 'làm đẹp,chưa rõ,filter';
+let CLEAN_SEL = new Set();      // gói người dùng tự tích để xoá lẻ
 async function cleanBox(){
   const box = $('#cleanBox'); if(!box) return;
   box.innerHTML = '<p class="muted small">Đang tính…</p>';
   try{
     const d = await api('/api/cleanup?kinds=' + encodeURIComponent(CLEAN_KINDS));
+    CLEAN_SEL = new Set([...CLEAN_SEL].filter(r => d.rows.some(x => x.resource_id === r)));
     const lo = d.batches.map(b=>`<tr>
         <td class="mono">${esc(b.batch)}</td><td class="mono">${b.n} gói</td>
         <td class="mono">${MB(b.freed)}</td><td class="mono muted">${vnTime(b.ts*1000)}</td>
@@ -606,14 +702,66 @@ async function cleanBox(){
       <div class="row">
         <button class="btn" id="btnClean" ${d.n && !d.capcut_running ? '' :
           `disabled title="${d.capcut_running?'Đóng CapCut trước đã':'Không có gì để dọn'}"`}>
-          Dọn ${d.n} gói · ${MB(d.size)}</button>
+          Dọn cả nhóm · ${d.n} gói · ${MB(d.size)}</button>
+        <button class="btn ghost" id="btnCleanSel" disabled title="Chưa tích gói nào">Dọn mục đã tích</button>
         <span class="muted small">${d.capcut_running
           ? '<span class="neg">CapCut đang mở — đóng hẳn rồi dọn.</span>'
           : 'Gói được chuyển sang khu cách ly, hoàn tác bất cứ lúc nào.'}</span>
       </div>
+      <div class="wrap" style="margin-top:12px"><table>
+        <thead><tr>
+          <th style="width:34px"><input type="checkbox" id="cleanAll" title="Tích tất cả đang hiện"></th>
+          <th></th><th>Loại</th><th>Tên / mã</th><th>Dung lượng</th><th>Có trên máy từ</th></tr></thead>
+        <tbody>${d.rows.map(r=>`<tr>
+          <td><input type="checkbox" class="ckClean" value="${esc(r.resource_id)}"
+               ${CLEAN_SEL.has(r.resource_id)?'checked':''}></td>
+          <td>${r.has_thumb?`<img class="thumb" loading="lazy" src="/api/inventory/${esc(r.resource_id)}/thumb" alt="">`
+                           :'<div class="thumb-none"></div>'}</td>
+          <td><span class="tag">${esc(r.kind_guess)}</span></td>
+          <td>${esc(r.name_internal||'') || `<span class="mono muted">${esc(r.resource_id)}</span>`}</td>
+          <td class="mono">${MB(r.size)}</td>
+          <td class="mono muted">${r.mtime?vnTime(r.mtime*1000):'—'}</td>
+        </tr>`).join('')}</tbody></table></div>
+      <p class="muted small">Hiện ${d.rows.length}/${d.n} gói (nặng nhất trước). Tích từng dòng để dọn lẻ,
+        hoặc bấm "Dọn cả nhóm" cho toàn bộ ${d.n} gói.</p>
       ${lo?`<div class="wrap" style="margin-top:12px"><table>
         <thead><tr><th>Lô đã cách ly</th><th>Số gói</th><th>Dung lượng</th><th>Lúc</th><th></th></tr></thead>
         <tbody>${lo}</tbody></table></div>`:''}`;
+    /* Tích chọn: người dùng muốn tự quyết từng gói, không phải chỉ dọn theo nhóm */
+    const sel = $('#btnCleanSel');
+    const syncSel = () => {
+      sel.disabled = !CLEAN_SEL.size || d.capcut_running;
+      sel.textContent = CLEAN_SEL.size ? `Dọn ${CLEAN_SEL.size} mục đã tích` : 'Dọn mục đã tích';
+      sel.title = CLEAN_SEL.size ? '' : 'Chưa tích gói nào';
+    };
+    box.querySelectorAll('.ckClean').forEach(ck => ck.onchange = () => {
+      ck.checked ? CLEAN_SEL.add(ck.value) : CLEAN_SEL.delete(ck.value);
+      syncSel();
+    });
+    $('#cleanAll').onchange = e => {
+      box.querySelectorAll('.ckClean').forEach(ck => {
+        ck.checked = e.target.checked;
+        ck.checked ? CLEAN_SEL.add(ck.value) : CLEAN_SEL.delete(ck.value);
+      });
+      syncSel();
+    };
+    syncSel();
+    sel.onclick = async () => {
+      const rids = [...CLEAN_SEL];
+      const size = d.rows.filter(r=>CLEAN_SEL.has(r.resource_id)).reduce((a,r)=>a+r.size,0);
+      if(!await modal({title:`Dọn ${rids.length} gói đã tích (${MB(size)})?`, body:
+        'Gói được CHUYỂN sang khu cách ly, hoàn tác một nút. Gói nào đang dùng sẽ được giữ lại.',
+        actions:[{label:'Dọn', value:true}, {label:'Huỷ', value:false, style:'ghost'}]})) return;
+      await busy(sel, 'Đang dọn…', async () => {
+        try{
+          const r = await api('/api/cleanup/quarantine', {method:'POST',
+            headers:{'Content-Type':'application/json'}, body: JSON.stringify({rids})});
+          toast('Đang dọn…'); CLEAN_SEL.clear();
+          JOB_DONE_CB[r.job] = () => { if(!$('#over').hidden) guard('#over', loadOver); };
+          startPolling();
+        }catch(e){ toast(String(e), true); }
+      });
+    };
     const b = $('#btnClean');
     if(b) b.onclick = async () => {
       if(!await modal({title:`Dọn ${d.n} gói (${MB(d.size)})?`, body:
@@ -1217,7 +1365,7 @@ function renderLib(){
 ACTIONS.libAll = () => { LIB_LIMIT = 1e6; renderLib(); };
 
 /* ══════════════════ AGENT ══════════════════ */
-const SESSION = 'default';
+let SESSION = PREF.get('chat', 'default');
 const SUGGEST = ['Tôi đang có những dự án nào?','Kho có gì của Nguyên?','Draft nào chưa chụp mốc?','Đo âm lượng draft mới nhất'];
 function bubble(role, text, tools){
   const box = $('#chat');
@@ -1254,6 +1402,31 @@ async function loadChat(){
   }
   d.messages.forEach(m=>bubble(m.role==='user'?'user':'model', m.content));
 }
+/* Nhiều cuộc trò chuyện thay vì một phiên "default" duy nhất: agent nhớ ngữ cảnh,
+   nên trộn việc dựng draft hôm nay với việc cân âm thanh tuần trước vào cùng một
+   mạch là làm nhiễu chính trí nhớ của nó. Mỗi việc một cuộc. */
+async function loadChatList(){
+  const box = $('#chatList'); if(!box) return;
+  const d = await api('/api/agent/sessions').catch(()=>({sessions:[]}));
+  const list = d.sessions.length ? d.sessions : [{session: SESSION, title: '', n: 0}];
+  if(!list.some(s => s.session === SESSION)) list.unshift({session: SESSION, title: '', n: 0});
+  box.innerHTML = list.map(s=>`<button data-act="pickChat" data-s="${esc(s.session)}"
+      class="${s.session===SESSION?'on':''}" title="${esc(s.title||'')}">
+      <span class="t">${esc(s.title ? s.title.slice(0,42) : 'Trò chuyện mới')}</span>
+      <span class="x" data-act="delChat" data-s="${esc(s.session)}" title="Xoá cuộc trò chuyện">×</span>
+    </button>`).join('');
+}
+ACTIONS.pickChat = d => { SESSION = d.s; PREF.set('chat', SESSION); loadChat(); loadChatList(); };
+ACTIONS.delChat = async d => {
+  if(!await confirmBox('Xoá cuộc trò chuyện này?', 'Agent sẽ quên hết ngữ cảnh đã trao đổi trong đó.')) return;
+  await api('/api/agent/reset?session=' + encodeURIComponent(d.s), {method:'POST'});
+  if(d.s === SESSION){ SESSION = 'c' + Date.now(); PREF.set('chat', SESSION); }
+  toast('Đã xoá cuộc trò chuyện'); loadChat(); loadChatList();
+};
+$('#btnNewChat').onclick = () => {
+  SESSION = 'c' + Date.now(); PREF.set('chat', SESSION);
+  loadChat(); loadChatList(); $('#msg').focus();
+};
 function ask(t){ $('#msg').value = t; send(); }
 ACTIONS.ask = (d, el) => ask(el.textContent);
 async function send(){
@@ -1283,14 +1456,13 @@ async function send(){
     bubble('model','Lỗi: '+e);
     inp.value = text;          // trả lại câu vừa gõ, khỏi gõ lại từ đầu
   }
-  finally{ clearInterval(tick); typing.remove(); btn.disabled = false; inp.focus(); }
+  finally{
+    clearInterval(tick); typing.remove(); btn.disabled = false; inp.focus();
+    loadChatList();          // câu đầu tiên trở thành tiêu đề cuộc trò chuyện ở thanh bên
+  }
 }
 $('#btnSend').onclick = send;
 $('#msg').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
-$('#btnReset').onclick = async ()=>{
-  if(!await confirmBox('Xoá toàn bộ hội thoại?','Agent sẽ quên hết ngữ cảnh đã trao đổi.')) return;
-  await api('/api/agent/reset?session='+SESSION,{method:'POST'}); loadChat(); toast('Đã xoá hội thoại');
-};
 
 /* theo dõi job ngay từ đầu, không đợi người dùng vào tab Dự án.
    Nhịp chậm này cũng là mạch đập kiểm tra server còn sống (banner mất kết nối). */

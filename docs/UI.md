@@ -26,6 +26,27 @@ Toàn bộ token đã được chép vào khối `:root{}` đầu file `ui.html`
 cho **phần tử tương tác** (nút, input, pill), còn **bề mặt lớn** dùng hairline nhạt hơn.
 Spec cũng không có màu báo lỗi — thêm `--color-danger`.
 
+## 1b. Bố cục: sidebar trái, không phải tab ngang
+
+Từ 25/07/2026 app dùng **thanh bên trái** thay cho 4 tab ngang. Lý do:
+
+- Thêm khu vực mới chỉ là **thêm một dòng**; tab ngang đã chật ngay khi có 5 mục.
+- Agent cần chỗ liệt kê **các cuộc trò chuyện** — tab ngang không có chỗ nào cho việc đó.
+- Người dùng đối chiếu với app quản trị/chat quen thuộc, sidebar là hình dạng họ mong đợi.
+
+| Phần | Quy tắc |
+|---|---|
+| `.side` | 248px, viền phải 2px hairline, `position:sticky` cao hết màn hình |
+| Nhãn nhóm (`.grp`) | 11px IN HOA — vẫn theo kiểu nav-label của spec |
+| Mục điều hướng | **chữ thường 15px weight 700 + icon 18px**. Lệch spec (spec để nav-label IN HOA) vì 6 mục có icon mà viết hoa hết thì nặng mặt và khó quét mắt. IN HOA giữ cho nhãn nhóm. |
+| Mục đang chọn | nền `storybook-green`, đúng như tab cũ |
+| Thu gọn | nút mũi tên → còn thanh 60px chỉ icon; tự thu khi màn hình < 900px; nhớ trong `PREF` |
+| Đầu trang | eyebrow 11px IN HOA + `h1` 30px weight 800 + một câu nói khu vực này để làm gì |
+
+> `--font-feather` trong app này **cũng là Nunito** (không phải font display riêng như
+> spec gốc), nên giới hạn "font display chỉ dùng từ 48px" không áp dụng — dùng nó ở 30px
+> cho `h1` và 32px cho số liệu thẻ là nhất quán với phần còn lại.
+
 ## 2. Ba luật bất di bất dịch (từ mục Don'ts của spec)
 
 1. **Không góc nhọn.** Mọi thứ bo `--radius: 12px`, kể cả tag nhỏ nhất.
@@ -127,7 +148,10 @@ editor đã có draft cho chủ đề đó) và nút *Tạo draft* hỏi lại t
 Hai luật rút ra:
 
 1. **Hỏi trước khi ghi đè công của người khác** — nêu rõ *đã dựng lúc nào* và *mất cái gì*.
-2. **Điều kiện biết trước thì chặn ngay ở nút, đừng để job chạy rồi mới báo.** Draft đang
+2. **Xoá thì cho chọn từng cái, đừng chỉ có nút "xoá tất cả".** Mục dọn tài nguyên có
+   checkbox từng dòng + tích tất cả, cạnh nút dọn cả nhóm. Người dùng biết rõ hơn app
+   cái nào họ còn cần — ép họ chọn "tất cả hoặc không gì" là ép sai.
+3. **Điều kiện biết trước thì chặn ngay ở nút, đừng để job chạy rồi mới báo.** Draft đang
    mở trong CapCut (`.locked`) là biết ngay từ `/api/projects` và `/api/drafts` — chặn lúc
    bấm, thay vì để build chạy 3 phút rồi mới `sys.exit` vì `.locked`. Tương tự: thiếu
    `GEMINI_API_KEY` thì khoá luôn nút *Phân tích* (bóc lời 15 phút GPU xong mới chết ở

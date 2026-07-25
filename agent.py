@@ -202,6 +202,19 @@ def history(session: str, limit: int = 40) -> list:
     return [dict(r) for r in reversed(rows)]
 
 
+def sessions(limit: int = 40) -> list:
+    """Danh sách cuộc trò chuyện cho thanh bên. Tiêu đề lấy câu ĐẦU TIÊN người
+    dùng gõ — người ta nhớ cuộc trò chuyện qua việc mình đã hỏi gì, không nhớ id."""
+    c = _init_db()
+    rows = c.execute(
+        "SELECT session, COUNT(*) n, MAX(ts) last_ts,"
+        "  (SELECT content FROM chat c2 WHERE c2.session=chat.session AND c2.role='user'"
+        "   ORDER BY c2.id LIMIT 1) title "
+        "FROM chat GROUP BY session ORDER BY last_ts DESC LIMIT ?", (limit,)).fetchall()
+    c.close()
+    return [dict(r) for r in rows]
+
+
 def _save(session: str, role: str, content: str):
     c = _init_db()
     c.execute("INSERT INTO chat(session,role,content,ts) VALUES(?,?,?,?)",

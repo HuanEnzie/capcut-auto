@@ -19,6 +19,7 @@ for _s in (sys.stdout, sys.stderr):
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import uvicorn
 
 import assetlib, asset_restore, audio_balance, capcut_inventory, draft_diff, draft_scan
@@ -460,13 +461,21 @@ def api_cleanup(kinds: str = ""):
             "rows": rows[:40]}
 
 
+class CleanupReq(BaseModel):
+    rids: list[str] = []
+
+
 @app.post("/api/cleanup/quarantine")
-def api_cleanup_quarantine(kinds: str = ""):
-    """Chuyển gói chưa dùng sang khu cách ly (hoàn tác được), chạy nền."""
-    rows = capcut_inventory.cleanup_candidates(kinds)
-    if not rows:
+def api_cleanup_quarantine(kinds: str = "", req: CleanupReq | None = None):
+    """Chuyển gói chưa dùng sang khu cách ly (hoàn tác được), chạy nền.
+
+    Hai lối vào: tích chọn từng gói (`rids`) hoặc dọn cả nhóm (`kinds`). Dù đi lối
+    nào, `quarantine()` vẫn kiểm tra lại từng gói trước khi đụng vào đĩa.
+    """
+    rids = list(req.rids) if req and req.rids else \
+        [r["resource_id"] for r in capcut_inventory.cleanup_candidates(kinds)]
+    if not rids:
         raise HTTPException(400, "không có gói nào để dọn")
-    rids = [r["resource_id"] for r in rows]
     return {"job": run_job(f"Dọn {len(rids)} gói chưa dùng",
                            lambda log: capcut_inventory.quarantine(rids, log))}
 
@@ -565,6 +574,12 @@ def api_agent_chat(session: str = "default", message: str = "",
         return agent.chat(session, message, model, run_job=run_job)
     except Exception as e:
         raise HTTPException(500, f"{type(e).__name__}: {str(e)[:200]}")
+
+
+@app.get("/api/agent/sessions")
+def api_agent_sessions():
+    import agent
+    return {"sessions": agent.sessions()}
 
 
 @app.get("/api/agent/history")

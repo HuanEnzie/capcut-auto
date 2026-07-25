@@ -27,14 +27,18 @@ PEXELS_API_KEY=...
 App tự nạp `.env` khi khởi động (`assetlib.load_env`), khỏi `set` biến môi trường mỗi lần.
 Biến đã có sẵn trong môi trường vẫn được ưu tiên hơn file. **`.env` không đưa lên git.**
 
-### Hai chế độ (nút góc phải header)
-- **Thủ công** — 4 tab bấm nút, thao tác nhanh, ai cũng dùng được.
+### Bố cục
+Thanh bên trái: 5 khu vực làm việc + **Agent chat**. Thu gọn còn thanh icon bằng nút mũi
+tên (tự thu khi màn hình hẹp). Chỉ báo tiến trình nằm dưới thanh bên nên thấy được ở mọi
+khu vực.
+
 - **Agent** — chat tiếng Việt, tự chọn tool, tự hỏi khi thiếu thông tin, **nhớ ngữ cảnh**
-  giữa các lượt (lưu SQLite trong `library.db`). Việc nặng đẩy sang job nền.
+  giữa các lượt (lưu SQLite trong `library.db`). **Nhiều cuộc trò chuyện** liệt kê ở thanh
+  bên, mỗi việc một cuộc để khỏi làm nhiễu trí nhớ của agent. Việc nặng đẩy sang job nền.
   Tool có: liệt kê dự án/record/draft, kho tài nguyên, phân tích record, dựng draft,
   chụp mốc, xem editor sửa gì, đồng bộ về kho, đo/cân bằng âm thanh, cài tài nguyên.
 
-### 5 tab (chế độ Thủ công)
+### 5 khu vực làm việc
 | Tab | Làm gì |
 |---|---|
 | **Tổng quan** | Việc đang dở + kiểm kê tài nguyên CapCut **có sẵn trên máy** (đã dùng / chưa dùng / theo loại) + **dọn gói tải thử không dùng** (CapCut không cho xoá; app cách ly, hoàn tác được) |
