@@ -300,14 +300,16 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
 </header>
 
 <nav id="navbar" role="tablist" aria-label="Khu vực làm việc">
-  <button data-t="proj" class="on" role="tab" aria-controls="proj" aria-selected="true">Dự án</button>
+  <button data-t="over" class="on" role="tab" aria-controls="over" aria-selected="true">Tổng quan</button>
+  <button data-t="proj" role="tab" aria-controls="proj" aria-selected="false">Dự án</button>
   <button data-t="draft" role="tab" aria-controls="draft" aria-selected="false">Draft</button>
   <button data-t="audio" role="tab" aria-controls="audio" aria-selected="false">Âm thanh</button>
   <button data-t="lib" role="tab" aria-controls="lib" aria-selected="false">Kho tài nguyên</button>
 </nav>
 
 <main>
-  <section id="proj" role="tabpanel"></section>
+  <section id="over" role="tabpanel"></section>
+  <section id="proj" role="tabpanel" hidden></section>
   <section id="draft" role="tabpanel" hidden></section>
   <section id="audio" role="tabpanel" hidden></section>
   <section id="lib" role="tabpanel" hidden></section>
@@ -473,11 +475,11 @@ const emptyBox = (title, hint) => `<div class="empty"><b>${esc(title)}</b>${esc(
 /* ---------- chuyển chế độ / tab ----------
    Tab và chế độ được NHỚ: người dùng ở tab Âm thanh cả buổi, mỗi lần Ctrl+F5
    lại bị ném về tab Dự án là mất mạch việc. */
-const SECTS = ['proj','draft','audio','lib'];
-const LOADERS = {proj:loadProj, draft:loadDrafts, audio:loadAudio, lib:loadLib};
-let TAB = PREF.get('tab', 'proj');
+const SECTS = ['over','proj','draft','audio','lib'];
+const LOADERS = {over:loadOver, proj:loadProj, draft:loadDrafts, audio:loadAudio, lib:loadLib};
+let TAB = PREF.get('tab', 'over');
 function showTab(t){
-  if(!LOADERS[t]) t = 'proj';
+  if(!LOADERS[t]) t = 'over';
   TAB = t; PREF.set('tab', t);
   document.querySelectorAll('nav button').forEach(x => {
     const on = x.dataset.t === t;
@@ -499,6 +501,110 @@ function setMode(agentMode){
 $('#mManual').onclick = ()=>setMode(false);
 $('#mAgent').onclick  = ()=>setMode(true);
 ACTIONS.retry = d => RETRY[d.sel] && RETRY[d.sel]();
+
+/* ══════════════════ TAB: TỔNG QUAN ══════════════════
+   Trả lời hai câu CapCut không trả lời được: "máy tôi đang có sẵn những gì?" và
+   "việc gì đang dở?". Tài nguyên trong cache CapCut phần lớn do CapCut TỰ tải khi
+   người dùng duyệt panel — nên tuyệt đối không đóng khung là "bạn tải về rồi bỏ
+   phí"; giá trị nằm ở chỗ chúng đã có sẵn trên đĩa, dùng được ngay. */
+const MB = n => `${((n||0)/1e6).toFixed(0)} MB`;
+const KIND_SHORT = ['sticker','hiệu ứng chữ','mẫu chữ','transition','hiệu ứng','filter'];
+let INV_KIND = PREF.get('invKind', '');
+async function loadOver(){
+  const box = $('#over'); box.innerHTML = skeleton(4);
+  const [ov, inv] = await Promise.all([api('/api/overview'),
+    api('/api/inventory?used=no&limit=40&kind=' + encodeURIComponent(KIND_SHORT.join(',')))]);
+  const s = inv.stats, td = ov.todo;
+  const chuaQuet = !s.scanned_at;
+  const card = (n, l, cls, act) => `<div class="card"${act?` data-act="${act}" style="cursor:pointer"`:''}>
+      <div class="n ${cls||''}">${n}</div><div class="l">${l}</div></div>`;
+  box.innerHTML = `
+    <h2>Việc cần làm</h2>
+    <div class="cards">
+      ${card(td.chua_dung, 'chủ đề chưa dựng draft', td.chua_dung?'':'good', 'goProj')}
+      ${card(td.chua_chup_moc, 'draft chưa chụp mốc — chưa học được gì', td.chua_chup_moc?'bad':'good', 'goDraft')}
+      ${card(td.dang_mo_trong_capcut, 'draft đang mở trong CapCut', td.dang_mo_trong_capcut?'bad':'good', 'goDraft')}
+      ${card(ov.projects, `dự án · ${ov.topics} chủ đề · ${ov.built} đã dựng`)}
+    </div>
+
+    <h2>Tài nguyên CapCut có sẵn trên máy này</h2>
+    ${chuaQuet ? emptyBox('Chưa kiểm kê lần nào',
+        'Bấm "Quét tài nguyên" để xem máy này đang có sẵn những gì — mất khoảng 15 giây.')
+    : `<div class="cards">
+      ${card(s.n_assets, `gói tài nguyên · ${MB(s.size)}`)}
+      ${card(s.n_used, `đã dùng trong draft · ${MB(s.size_used)}`, 'good')}
+      ${card(s.n_unused, `CÓ SẴN chưa dùng · ${MB(s.size_unused)}`, '')}
+      ${card(s.n_internal, `module nội bộ CapCut · ${MB(s.size_internal)}`, 'muted')}
+    </div>
+    <p class="muted small">Phần lớn số này do <b>CapCut tự tải khi bạn duyệt panel</b>, không phải bạn bấm tải —
+      nên "chưa dùng" không phải lỗi ai cả. Điều đáng nói: chúng <b>đã nằm sẵn trên đĩa</b>, dựng draft là
+      dùng được ngay, không cần tải. Module nội bộ (${s.n_internal} gói) là thứ CapCut tự dùng, không tính là tài nguyên.</p>
+    <div class="wrap"><table>
+      <thead><tr><th>Loại</th><th>Gói</th><th>Dung lượng</th><th>Đã dùng</th><th>Tỷ lệ dùng</th></tr></thead>
+      <tbody>${s.by_kind.map(k=>`<tr>
+        <td><span class="tag">${esc(k.kind||'—')}</span></td>
+        <td class="mono">${k.n}</td><td class="mono">${MB(k.sz)}</td>
+        <td class="mono ${k.used?'pos':''}">${k.used}</td>
+        <td><div class="bar" style="min-width:110px"><i style="width:${k.n?k.used/k.n*100:0}%"></i></div></td>
+      </tr>`).join('')}</tbody></table></div>`}
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="btnScanInv">Quét tài nguyên</button>
+      <span class="muted small">${s.scanned_at?`kiểm kê lúc ${vnTime(s.scanned_at*1000)}`:'chưa quét lần nào'}
+        · nguồn: ${esc(ov.capcut.source)}</span>
+    </div>
+
+    ${chuaQuet ? '' : `
+    <h2>Có sẵn mà chưa dùng — thử ngay không cần tải</h2>
+    <div class="row">
+      <label class="fld"><span>Loại</span><select id="invKind">
+        <option value="">dùng được cho short (${KIND_SHORT.length} loại)</option>
+        ${s.by_kind.map(k=>`<option value="${esc(k.kind)}" ${k.kind===INV_KIND?'selected':''}>${esc(k.kind)} (${k.n})</option>`).join('')}
+      </select></label>
+      <span class="muted small">Kho gu mới học ${ov.lib.n} tài nguyên${ov.owners.length?` (${ov.owners.map(o=>`${esc(o.owner)} ${o.n}`).join(' · ')})`:''} —
+        còn ${s.n_unused} gói nữa đang nằm chờ trên máy.</span>
+    </div>
+    <div id="invRows"></div>`}`;
+  $('#btnScanInv').onclick = e => busy(e.currentTarget, 'Đang quét…', async () => {
+    try{
+      const r = await api('/api/inventory/scan', {method:'POST'});
+      toast('Đang kiểm kê tài nguyên trên máy…');
+      JOB_DONE_CB[r.job] = () => { if(!$('#over').hidden) guard('#over', loadOver); };
+      startPolling();
+    }catch(e){ toast(String(e), true); }
+  });
+  if($('#invKind')){
+    $('#invKind').onchange = e => { INV_KIND = e.target.value; PREF.set('invKind', INV_KIND); invRows(); };
+    invRows(inv.rows);
+  }
+}
+/* Mặc định lọc bỏ "làm đẹp" và "chưa rõ": 144 gói makeup chiếm 60% dung lượng mà
+   editor short-form không bao giờ đụng — để lẫn vào thì bảng gợi ý thành vô dụng. */
+async function invRows(pre){
+  const box = $('#invRows'); if(!box) return;
+  box.innerHTML = '<p class="muted small">Đang lọc…</p>';
+  try{
+    const want = INV_KIND || KIND_SHORT.join(',');
+    const rows = (pre && !INV_KIND) ? pre
+      : (await api(`/api/inventory?used=no&limit=60&kind=${encodeURIComponent(want)}`)).rows;
+    box.innerHTML = rows.length ? `<div class="wrap"><table>
+      <thead><tr><th></th><th>Loại</th><th>Tên / mã</th><th>Dung lượng</th><th>Có trên máy từ</th></tr></thead>
+      <tbody>${rows.slice(0,40).map(r=>`<tr>
+        <td>${r.has_thumb ? `<img class="thumb" loading="lazy" src="/api/inventory/${esc(r.resource_id)}/thumb" alt=""
+             onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-none'}))">`
+           : '<div class="thumb-none"></div>'}</td>
+        <td><span class="tag">${esc(r.kind_real||r.kind_guess)}</span></td>
+        <td>${esc(r.name_display || r.name_internal || '')
+              || `<span class="mono muted">${esc(r.resource_id)}</span>`}</td>
+        <td class="mono">${MB(r.size)}</td>
+        <td class="mono muted">${r.mtime?vnTime(r.mtime*1000):'—'}</td>
+      </tr>`).join('')}</tbody></table></div>
+      <p class="muted small">Hiện ${Math.min(40, rows.length)}/${rows.length} gói.
+        Tên trống là gói chưa từng dùng — CapCut chỉ ghi tên hiển thị vào draft khi tài nguyên được dùng.</p>`
+      : emptyBox('Không còn gói nào chưa dùng ở loại này', 'Đổi loại khác để xem tiếp.');
+  }catch(e){ box.innerHTML = `<p class="neg">${esc(e)}</p>`; }
+}
+ACTIONS.goProj  = () => showTab('proj');
+ACTIONS.goDraft = () => showTab('draft');
 
 /* ══════════════════ TAB: DỰ ÁN (luồng chính) ══════════════════ */
 let JOB_TIMER=null, PROJ=null;

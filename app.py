@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
-import assetlib, asset_restore, audio_balance, draft_diff, draft_scan
+import assetlib, asset_restore, audio_balance, capcut_inventory, draft_diff, draft_scan
 
 sys.path.insert(0, str(assetlib.ROOT / "shorts"))
 import build_short_draft as bsd
@@ -423,6 +423,55 @@ def api_asset_thumb(aid: int):
                 if hit and hit.is_file():
                     return FileResponse(hit)
     raise HTTPException(404, "tài nguyên này không có ảnh")
+
+
+# ───────── TỔNG QUAN: tài nguyên có sẵn trên máy + việc đang dở ─────────
+
+@app.get("/api/inventory")
+def api_inventory(kind: str = "", used: str = "", q: str = "", limit: int = 60):
+    return {"stats": capcut_inventory.stats(),
+            "rows": capcut_inventory.rows(kind, used, q, limit)}
+
+
+@app.get("/api/inventory/{rid}/thumb")
+def api_inventory_thumb(rid: str):
+    """Ảnh của gói nằm sẵn trong cache (singleImage.png / final.gif / cover_icon.png).
+    Quy tắc UI: tài nguyên hình ảnh thì phải hiện hình, đừng bắt đoán qua tên."""
+    p = capcut_inventory.thumb_path(rid)     # cùng hàm với lúc quét -> khớp cờ has_thumb
+    if not p:
+        raise HTTPException(404, "gói này không có ảnh")
+    return FileResponse(p)
+
+
+@app.post("/api/inventory/scan")
+def api_inventory_scan():
+    """Quét lại ~350 gói mất hơn chục giây -> job nền, không chẹn giao diện."""
+    return {"job": run_job("Quét tài nguyên CapCut trên máy",
+                           lambda log: capcut_inventory.rebuild(log))}
+
+
+@app.get("/api/overview")
+def api_overview():
+    """Việc đang dở, tính từ dữ liệu thật — để người dùng biết cần làm gì tiếp."""
+    projects = api_projects()["projects"]
+    n_topics = sum(len(p["topics"]) for p in projects)
+    built = [d for p in projects for t in p["topics"] for d in t["drafts"]]
+    drafts = api_drafts()["drafts"]
+    todo = {
+        "chua_dung": sum(1 for p in projects for t in p["topics"] if not t["drafts"]),
+        "chua_chup_moc": sum(1 for d in drafts if not d["snapshot"]),
+        "dang_mo_trong_capcut": sum(1 for d in drafts if d["locked"]),
+    }
+    c = assetlib.conn()
+    lib = dict(c.execute("SELECT COUNT(*) n, COALESCE(SUM(size),0) sz FROM assets").fetchone())
+    owners = [dict(r) for r in c.execute(
+        "SELECT owner, COUNT(*) n, SUM(use_count) uses FROM assets "
+        "WHERE owner IS NOT NULL AND owner!='' GROUP BY owner ORDER BY n DESC").fetchall()]
+    c.close()
+    return {"projects": len(projects), "topics": n_topics, "built": len(built),
+            "drafts": len(drafts), "todo": todo, "lib": lib, "owners": owners,
+            "capcut": {k: (str(v) if k in ("draft", "cache", "home") else v)
+                       for k, v in assetlib.find_capcut().items()}}
 
 
 @app.get("/api/editors")
