@@ -576,6 +576,29 @@ def api_agent_chat(session: str = "default", message: str = "",
         raise HTTPException(500, f"{type(e).__name__}: {str(e)[:200]}")
 
 
+class XacNhanReq(BaseModel):
+    session: str = "default"
+    hanh_dong: str
+    tham_so: dict = {}
+
+
+@app.post("/api/agent/confirm")
+def api_agent_confirm(req: XacNhanReq):
+    """Agent KHÔNG tự chạy việc phá huỷ — nó đề xuất, người dùng bấm nút, rồi mới chạy.
+    Một câu tiếng Việt hiểu nhầm không được phép xoá công của editor."""
+    import agent
+    return agent.xac_nhan(req.session, req.hanh_dong, req.tham_so, run_job=run_job)
+
+
+@app.get("/api/agent/tools")
+def api_agent_tools():
+    """Registry tool + nhật ký chọn tool — để đo có cần router hay chưa."""
+    import agent
+    return {"tools": [{"ten": t.ten, "nhom": t.nhom, "kieu": t.kieu, "mo_ta": t.mo_ta}
+                      for t in agent.TOOLS.values()],
+            "thong_ke": agent.thong_ke_tool()}
+
+
 @app.get("/api/agent/sessions")
 def api_agent_sessions():
     import agent

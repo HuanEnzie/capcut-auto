@@ -1402,7 +1402,20 @@ async function loadChat(){
   if(!d.messages.length){
     bubble('model','Chào bạn. Tôi làm được: phân tích record mới, dựng draft theo gu editor, xem kho tài nguyên, so sánh editor đã sửa gì, cân bằng âm thanh. Cần gì cứ nói.');
   }
-  d.messages.forEach(m=>bubble(m.role==='user'?'user':'model', m.content));
+  d.messages.forEach(m=>{
+    /* Lịch sử giờ có cả dòng 'tool' (tool đã gọi + dữ liệu trả về) để lượt sau
+       agent còn nhớ. Người dùng chỉ cần thấy ĐÃ CHẠY GÌ, không cần cả cục JSON. */
+    if(m.role === 'tool'){
+      let ten = 'tool';
+      try{ ten = JSON.parse(m.content).tool || ten; }catch(e){}
+      const t = document.createElement('div');
+      t.className = 'tools';
+      t.innerHTML = `<span class="tag info" title="${esc(m.content.slice(0,300))}">${esc(ten)}</span>`;
+      $('#chat').appendChild(t);
+      return;
+    }
+    bubble(m.role==='user'?'user':'model', m.content);
+  });
 }
 /* Nhiều cuộc trò chuyện thay vì một phiên "default" duy nhất: agent nhớ ngữ cảnh,
    nên trộn việc dựng draft hôm nay với việc cân âm thanh tuần trước vào cùng một
@@ -1429,6 +1442,35 @@ $('#btnNewChat').onclick = () => {
   SESSION = 'c' + Date.now(); PREF.set('chat', SESSION);
   loadChat(); loadChatList(); $('#msg').focus();
 };
+/* Việc phá huỷ: agent chỉ ĐỀ XUẤT, người dùng bấm nút mới chạy. Một câu tiếng Việt
+   bị hiểu nhầm không được phép xoá công editor vừa ngồi sửa cả buổi. */
+function confirmCard(x){
+  const box = $('#chat');
+  const d = document.createElement('div');
+  d.className = 'bub a';
+  d.style.borderColor = 'var(--color-danger)';
+  d.innerHTML = `<b>Cần bạn xác nhận: ${esc(x.hanh_dong)}</b>
+    <div class="mono small" style="margin:6px 0">${esc(JSON.stringify(x.tham_so))}</div>
+    ${x.canh_bao?`<div class="neg small">${esc(x.canh_bao)}</div>`:''}
+    <div class="row" style="margin:10px 0 0">
+      <button class="btn danger sm" data-act="agentYes">Xác nhận chạy</button>
+      <button class="btn ghost sm" data-act="agentNo">Bỏ qua</button>
+    </div>`;
+  d.querySelector('[data-act="agentYes"]').onclick = async e => {
+    await busy(e.currentTarget, 'Đang chạy…', async () => {
+      try{
+        const r = await api('/api/agent/confirm', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({session: SESSION, hanh_dong: x.hanh_dong, tham_so: x.tham_so})});
+        d.remove();
+        bubble('model', r.ghi_chu + (r.ket_qua && r.ket_qua.draft ? ` → ${r.ket_qua.draft}` : ''));
+        askNotify(); startPolling();
+      }catch(e){ toast(String(e), true); }
+    });
+  };
+  d.querySelector('[data-act="agentNo"]').onclick = () => { d.remove(); bubble('model','Đã bỏ qua.'); };
+  box.appendChild(d); box.scrollTop = box.scrollHeight;
+}
 function ask(t){ $('#msg').value = t; send(); }
 ACTIONS.ask = (d, el) => ask(el.textContent);
 async function send(){
@@ -1450,6 +1492,7 @@ async function send(){
   try{
     const r = await api(`/api/agent/chat?session=${SESSION}&message=${encodeURIComponent(text)}`,{method:'POST'});
     bubble('model', r.reply, (r.steps||[]).map(s=>s.tool));
+    if(r.cho_xac_nhan) confirmCard(r.cho_xac_nhan);
     if((r.steps||[]).some(s=>s.ket_qua && s.ket_qua.da_khoi_dong)){
       toast('Đã khởi động việc chạy nền — theo dõi ở chỉ báo tiến trình trên đầu trang');
       askNotify(); startPolling();
