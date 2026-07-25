@@ -1182,7 +1182,22 @@ async function showDiff(n, btn){
         <td>${esc(r.name)||'—'}</td><td class="mono muted">${esc(r.resource_id||'')}</td></tr>`).join('')
       : '<tr><td colspan="3" class="muted">— không có —</td></tr>';
     const changed = d.added.length + d.removed.length;
+    const s = d.sua || {};
+    /* "Độ phải sửa" là thước đo tiến hoá: editor phải sửa bao nhiêu thì draft mới
+       dùng được. Giảm dần theo tháng = app đang hợp gu hơn, thay cho cảm tính. */
+    const doSua = s.diem != null ? `
+      <div class="cards">
+        <div class="card"><div class="n ${s.diem<=0.15?'good':(s.diem>=0.4?'bad':'')}">${Math.round(s.diem*100)}%</div>
+          <div class="l">ĐỘ PHẢI SỬA — 0% là mở ra dùng luôn</div></div>
+        <div class="card"><div class="n">${s.caption.sua_hoac_them}<span class="muted" style="font-size:16px">/${s.caption.tong}</span></div>
+          <div class="l">caption bị sửa chữ · ${s.caption.doi_gio} bị đổi giờ · ${s.caption.bo} bị bỏ</div></div>
+        <div class="card"><div class="n">${s.nhip_cat.bi_doi}<span class="muted" style="font-size:16px">/${s.nhip_cat.tong}</span></div>
+          <div class="l">đoạn hình bị cắt lại</div></div>
+        <div class="card"><div class="n">${s.am_luong.bi_chinh}<span class="muted" style="font-size:16px">/${s.am_luong.tong}</span></div>
+          <div class="l">nguồn tiếng bị chỉnh âm lượng</div></div>
+      </div>` : (s.chua_do_duoc ? `<p class="muted small">${esc(s.chua_do_duoc)}</p>` : '');
     out.innerHTML = `<h2>${esc(n)} — editor đã thay đổi</h2>
+      ${doSua}
       <div class="cards">
         <div class="card"><div class="n good">${d.added.length}</div><div class="l">thêm mới → vào kho</div></div>
         <div class="card"><div class="n bad">${d.removed.length}</div><div class="l">bị gỡ → hạ ưu tiên</div></div>

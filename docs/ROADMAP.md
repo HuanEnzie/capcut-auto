@@ -92,7 +92,7 @@ Từ cùng dữ liệu đó rút ra **luật dựng** (rule store) thay cho vi�
 | `Cache/effect`, `Cache/artistEffect` | 354 gói: `resource_id`, kích thước, thời điểm tải, `config.json` (tên nội bộ + version), ảnh `singleImage.png`/`final.gif` | Đây là "đã tải" |
 | `draft_content.json` của 25 draft | tên hiển thị thật, `resource_id`, số lần dùng, dùng ở draft nào | Đây là "đã dùng" |
 | `Cache/music` (200), `Resources/Font`, `Cache/fontImage` (7.606) | nhạc + font đã tải | Chưa quét |
-| `Presets/Adjust`, `Presets/Combination`, `Presets/Text_V2` | **preset do chính editor lưu tay** | Mỏ vàng để học gu, chưa đụng tới |
+| `Presets/Adjust`, `Presets/Combination`, `Presets/Text_V2` | preset do editor lưu tay | ⚠️ **ĐO 25/07: RỖNG** — `preset_virtual_store` chỉ có hai mảng trống, tổng 1 KB. Đội chưa từng lưu preset nào. Đừng xây scanner cho nó tới khi có dữ liệu thật |
 | `Config/globalSetting` | vị trí thư mục draft | Đã dùng để dò CapCut |
 
 **Không có** CSDL catalog nào trong CapCut (đã quét: 0 file SQLite ngoài cache) → phải tự
