@@ -7,8 +7,11 @@ nuốt lỗi rồi ghi cache RỖNG, hỏng ngầm. Gom về một chỗ.
 """
 import time
 
-# thứ tự ưu tiên khi model chính hỏng (tài khoản có 2.5/3/3.1/3.5/3.6-flash)
-FALLBACKS = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3-flash"]
+# Thứ tự ưu tiên khi model chính hỏng. KIỂM CHỨNG bằng client.models.list() ngày
+# 25/07/2026 — 'gemini-3-flash' trong danh sách cũ trả 404 với tài khoản này, mà 404
+# không phải lỗi quá tải nên vòng thử lại bỏ qua luôn: cả cơ chế dự phòng thành vô
+# dụng đúng lúc cần nhất. Model không tồn tại còn tệ hơn là không có dự phòng.
+FALLBACKS = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.0-flash"]
 OVERLOADED = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "overloaded")
 
 
