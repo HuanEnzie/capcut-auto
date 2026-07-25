@@ -12,19 +12,43 @@
 
 | Đo | Kết quả | Ý nghĩa |
 |---|---|---|
-| Gói tài nguyên đã tải trong CapCut | **354 gói · 448 MB** | Cache `effect` + `artistEffect` |
+| Gói trong cache CapCut | 354 · 448 MB | `Cache/effect` + `Cache/artistEffect` |
+| — trong đó **tài nguyên thật** (ID 19 số) | **319 · 353 MB** | sticker / hiệu ứng chữ / transition / effect |
+| — module nội bộ (ID ≤12 số) | 35 · 95 MB | `star`, `mirror`, `linear`, `rect`… KHÔNG phải tài nguyên, phải loại khỏi thống kê |
 | Từng được dùng thật trong draft | **19** | Đối chiếu `resource_id` qua 25 draft |
-| **Tải về chưa bao giờ dùng** | **335 (95%)** | CapCut không có màn hình nào cho biết |
-| Kho app đã học được | 43 tài nguyên (Đan 26 / Nguyên 17) | Chỉ học từ draft, chưa đụng tới cache |
+| Kho app đã học được | 43 (Đan 26 / Nguyên 17) | Chỉ học từ draft, chưa đụng tới cache |
 | Draft đã dựng | 25 | Chưa có trạng thái vòng đời nào |
 
-Hai kết luận rút ra:
+### Cache đến từ đâu — kiểm chứng trước khi xây dashboard trên nó
+
+`C:\Program Files\CapCut` gần như rỗng: **không tài nguyên nào đi kèm bộ cài**, tất cả tải
+qua mạng về `User Data/Cache`. Nhưng phân bố theo ngày cho thấy **không phải người dùng chủ
+động bấm tải**:
+
+| Ngày | Gói mới | Draft sửa |
+|---|---:|---:|
+| 04/07 (ngày đầu mở CapCut) | **224** | 0 |
+| 06→21/07 | 9–21 / ngày | 0–2 |
+| 23/07 | 0 | 5 |
+| 24/07 | 16 | 15 |
+
+224/354 gói rơi vào đúng ngày đầu, khi chưa có draft nào → CapCut tự tải bộ nền lúc mở lần
+đầu, và tải thêm khi người dùng **duyệt/hover panel**. Ngày 23/07 sửa 5 draft mà không tải
+gói nào: dùng lại đồ có sẵn thì không phát sinh tải.
+
+> **Vì vậy đừng dựng dashboard theo hướng "bạn lãng phí 335 gói".** Cách đọc đúng — và
+> giá trị lớn hơn: **máy này đang có sẵn ~300 gói dùng được NGAY, app mới chạm tới 19.**
+> Chúng đã nằm trên đĩa nên dựng draft là dùng được liền, không cần tải. Đây chính là
+> nguyên liệu để vòng học có cái mà tiến hoá, thay vì quanh quẩn 43 tài nguyên cũ.
+
+Hai kết luận kỹ thuật:
 
 1. **Kho hiện tại đang mù một nửa.** Nó chỉ biết tài nguyên *đã dùng trong draft*, không
-   biết editor *có sẵn những gì*. Muốn tư vấn "dùng cái này đi" thì phải thấy cả kho đã tải.
+   biết trên máy *có sẵn những gì*.
 2. **Tên hiển thị chỉ có trong draft.** `config.json` trong gói cache chỉ có tên nội bộ
-   (`star`, `mirror`); tên thật (`cc_印加太阳神之辉`, `弹出变色-粉`) nằm ở `materials[].name`
-   của draft. Dashboard phải **hợp nhất hai nguồn**, không nguồn nào đủ một mình.
+   (`GESticker_...`, `AmazingAuto_...`); tên thật (`cc_印加太阳神之辉`, `弹出变色-粉`) nằm ở
+   `materials[].name` của draft. Dashboard phải **hợp nhất hai nguồn**, không nguồn nào đủ
+   một mình — và phải chấp nhận một phần gói chưa dùng thì chưa có tên đẹp để hiển thị.
 
 ---
 
@@ -147,6 +171,23 @@ Ba cái lợi, theo thứ tự quan trọng:
 
 ---
 
+## 5b. Ràng buộc mới: mỗi người một máy, hướng tới nhiều người dùng
+
+Chốt ngày 25/07/2026: Đan và Nguyên làm trên **máy riêng**, và app có thể **thương mại hoá
+cho nhiều người** chứ không chỉ hai bạn này. Kéo theo 5 hệ quả phải tôn trọng từ bây giờ:
+
+| Hệ quả | Việc phải làm |
+|---|---|
+| Kho gu là **dữ liệu riêng của từng người**, nằm trên máy họ | Không thiết kế schema theo giả định "một máy có mọi editor". `owner` phải là danh sách động (đã đúng), thêm khái niệm *máy này* vs *kho chung* |
+| Hai máy học riêng thì tri thức **không cộng dồn** | Cần đường **xuất/nhập gói kho** (kho + luật + chỉ số), sau đó mới tính tới thư mục chung / server |
+| Người mua sẽ **không sửa `.env`** | Cần màn hình **Cài đặt trong app** để nhập API key (lưu cạnh dữ liệu, không nằm trong thư mục cài) |
+| Máy khách có CapCut ở **vị trí khác** | Đã xong: `assetlib.find_capcut()` đọc `globalSetting` |
+| Kho gu = dữ liệu cá nhân | Không tự gửi đi đâu. Thống kê/telemetry nếu có phải **hỏi trước**, mặc định tắt |
+
+> Hệ quả thiết kế cho GĐ1: mọi bảng thống kê phải phân biệt rõ **"trên máy này"** với
+> **"kho đã học"**, vì hai thứ đó sẽ khác nhau ở mỗi máy — đây cũng là lý do dashboard
+> phải hợp nhất *cache máy này* + *draft máy này* + *kho gu của người dùng này*.
+
 ## 6. Thứ tự đề xuất
 
 | GĐ | Việc | Vì sao đặt ở đây |
@@ -156,6 +197,7 @@ Ba cái lợi, theo thứ tự quan trọng:
 | **3** | **Học sâu**: diff mở rộng (timing/caption/âm lượng) → chỉ số "độ phải sửa" → rule store trên EDL | Cần EDL ở GĐ2 và dữ liệu ở GĐ1 |
 | **4** | **Agent dài hạn**: bộ nhớ có cấu trúc + tool đọc dashboard/rule store + tóm tắt phiên | Agent chỉ tư vấn giỏi khi đã có tri thức của GĐ1-3 để đọc |
 | **xen kẽ** | **Bộ test tự động** cho pipeline + API | Càng để lâu càng đắt; nên bắt đầu ngay từ GĐ1 |
+| **trước khi bán** | Màn hình **Cài đặt** (API key, thư mục dữ liệu) + **xuất/nhập gói kho** giữa các máy | Hệ quả của mục 5b — người mua không sửa `.env`, và hai máy phải cộng dồn được tri thức |
 
 Nguyên tắc xuyên suốt, giữ nguyên từ giai đoạn hiện tại: **đừng ép AI đoán giỏi hơn —
 để editor sửa rồi máy học lại** (bài học mục 10.1 của `WORKFLOW.md`).
