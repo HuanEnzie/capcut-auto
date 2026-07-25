@@ -460,6 +460,12 @@ def _init_db():
     c.execute("CREATE TABLE IF NOT EXISTS tool_log("
               "id INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT, tool TEXT,"
               " co_loi INTEGER, ts REAL)")
+    # nhật ký từng LƯỢT chat: max_steps=6 là TRẦN chứ không phải mức tiêu thụ — vòng
+    # lặp thoát ngay khi model ngừng gọi tool. Muốn chỉnh trần cho đúng thì phải biết
+    # thực tế mỗi tin nhắn chạy mấy vòng, nên ghi lại thay vì đoán.
+    c.execute("CREATE TABLE IF NOT EXISTS chat_log("
+              "id INTEGER PRIMARY KEY AUTOINCREMENT, session TEXT, vong INTEGER,"
+              " so_tool INTEGER, model TEXT, ket_thuc TEXT, token_gui INTEGER, ts REAL)")
     # TẦNG 1 của trí nhớ: điều bền vững, XUYÊN cuộc trò chuyện, KHÔNG BAO GIỜ bị nén.
     # Tóm tắt bằng LLM giỏi giữ ý nhưng ăn mất '1107_t4_nguyen' và '-14 LUFS' —
     # nên thứ cần nhớ chính xác phải nằm riêng, có cấu trúc, truy vấn được.
@@ -543,6 +549,37 @@ def _save(session: str, role: str, content: str):
     c.execute("INSERT INTO chat(session,role,content,ts) VALUES(?,?,?,?)",
               (session, role, content, time.time()))
     c.commit(); c.close()
+
+
+def _log_luot(session, vong, so_tool, model, ket_thuc, token_gui):
+    c = _init_db()
+    c.execute("INSERT INTO chat_log(session,vong,so_tool,model,ket_thuc,token_gui,ts) "
+              "VALUES(?,?,?,?,?,?,?)",
+              (session, vong, so_tool, model, ket_thuc, token_gui, time.time()))
+    c.commit(); c.close()
+
+
+def thong_ke_luot(limit: int = 200) -> dict:
+    """Thực tế mỗi tin nhắn chạy mấy vòng gọi API — số liệu để chốt max_steps."""
+    c = _init_db()
+    rows = [dict(r) for r in c.execute(
+        "SELECT vong, so_tool, model, ket_thuc, token_gui FROM chat_log "
+        "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
+    c.close()
+    if not rows:
+        return {"so_luot": 0, "ghi_chu": "chưa có dữ liệu — dùng agent vài lượt rồi xem lại"}
+    phan_bo = {}
+    for r in rows:
+        phan_bo[r["vong"]] = phan_bo.get(r["vong"], 0) + 1
+    v = sorted(r["vong"] for r in rows)
+    return {"so_luot": len(rows),
+            "vong_trung_binh": round(sum(v) / len(v), 2),
+            "vong_p90": v[int(len(v) * 0.9) - 1] if v else 0,
+            "vong_toi_da": max(v),
+            "phan_bo_vong": dict(sorted(phan_bo.items())),
+            "token_gui_tb": round(sum(r["token_gui"] or 0 for r in rows) / len(rows)),
+            "ket_thuc": {k: sum(1 for r in rows if r["ket_thuc"] == k)
+                         for k in {r["ket_thuc"] for r in rows}}}
 
 
 def _log_tool(session: str, ten: str, ket_qua: dict):
@@ -737,21 +774,25 @@ def chat(session: str, user_text: str, model: str = "gemini-2.5-flash",
     steps, cho_xac_nhan = [], None
     sys_prompt = SYS + _khoi_tri_nho()         # ký ức dài hạn đi kèm prompt, khỏi bị nén mất
 
-    rong = 0
+    rong, vong, model_dung = 0, 0, model
+    token_gui = sum(uoc_token(p.text) for ct in contents for p in ct.parts
+                    if getattr(p, "text", None))
     for _ in range(max_steps):
+        vong += 1
         cfg = types.GenerateContentConfig(
             system_instruction=sys_prompt,
             tools=[types.Tool(function_declarations=_declarations(types, active))],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             max_output_tokens=4000)
         try:
-            resp, _used = gemini_util.generate_raw(client, model, contents=contents, config=cfg,
-                                                   chain=gemini_util.FALLBACKS_CHAT)
+            resp, model_dung = gemini_util.generate_raw(
+                client, model, contents=contents, config=cfg, chain=gemini_util.FALLBACKS_CHAT)
         except gemini_util.HetHanNgach as e:
             # Nói ĐÚNG nguyên nhân. Trước đây lỗi hạ tầng rơi vào câu "tôi gọi tool
             # hơi nhiều lượt" — người dùng đi sửa câu lệnh trong khi vấn đề là quota.
             reply = "Hết hạn ngạch Gemini rồi. " + str(e).split("—")[0].strip()
             _save(session, "model", reply)
+            _log_luot(session, vong, len(steps), model_dung, "het_han_ngach", token_gui)
             return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan,
                     "het_han_ngach": True}
         cand = (resp.candidates or [None])[0]
@@ -762,12 +803,14 @@ def chat(session: str, user_text: str, model: str = "gemini-2.5-flash",
             if rong >= 2:
                 reply = "Gemini trả về rỗng hai lần liền — bạn gửi lại câu vừa rồi giúp nhé."
                 _save(session, "model", reply)
+                _log_luot(session, vong, len(steps), model_dung, "rong", token_gui)
                 return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan}
             continue
         calls = [p.function_call for p in cand.content.parts if getattr(p, "function_call", None)]
         if not calls:
             reply = "".join(p.text for p in cand.content.parts if getattr(p, "text", None)) or "…"
             _save(session, "model", reply)
+            _log_luot(session, vong, len(steps), model_dung, "tra_loi", token_gui)
             nen = _nen_neu_can(session, client, model)     # kích hoạt bằng CODE, không để model tự gọi
             return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan, "da_nen": nen}
 
@@ -791,6 +834,7 @@ def chat(session: str, user_text: str, model: str = "gemini-2.5-flash",
 
     reply = "Tôi gọi tool hơi nhiều lượt mà chưa xong — bạn nói rõ hơn giúp nhé."
     _save(session, "model", reply)
+    _log_luot(session, vong, len(steps), model_dung, "het_vong", token_gui)
     return {"reply": reply, "steps": steps, "cho_xac_nhan": cho_xac_nhan}
 
 

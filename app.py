@@ -594,9 +594,14 @@ def api_agent_confirm(req: XacNhanReq):
 def api_agent_tools():
     """Registry tool + nhật ký chọn tool — để đo có cần router hay chưa."""
     import agent
+    import sys as _s
+    _s.path.insert(0, str(assetlib.ROOT / "shorts"))
+    import gemini_util
     return {"tools": [{"ten": t.ten, "nhom": t.nhom, "kieu": t.kieu, "mo_ta": t.mo_ta}
                       for t in agent.TOOLS.values()],
-            "thong_ke": agent.thong_ke_tool()}
+            "thong_ke_tool": agent.thong_ke_tool(),
+            "thong_ke_luot": agent.thong_ke_luot(),      # số liệu để chốt max_steps
+            "key": gemini_util.trang_thai()}
 
 
 @app.get("/api/agent/sessions")
