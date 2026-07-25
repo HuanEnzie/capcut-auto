@@ -787,15 +787,26 @@ async function fullLog(id){
 async function loadDrafts(){
   const box = $('#draft'); box.innerHTML = skeleton(2);
   const d = await api('/api/drafts');
+  /* Nói rõ tìm thấy CapCut ở đâu — máy người dùng có thể cài chỗ khác, hoặc đã
+     đổi thư mục draft trong Cài đặt của CapCut. Không tìm thấy thì phải chỉ việc
+     cần làm, đừng chỉ hiện bảng rỗng. */
+  const where = `<p class="muted small mono" title="nguồn: ${esc(d.capcut_source||'')}">${esc(d.root)}</p>`;
+  if(!d.capcut_found){
+    box.innerHTML = '<h2>Draft CapCut</h2>' + where
+      + emptyBox('Không tìm thấy CapCut trên máy này',
+          'Cài CapCut và mở thử một lần, rồi khởi động lại app. Nếu đã cài ở nơi khác, '
+        + 'chạy app kèm CAPCUT_DRAFTS_ROOT=<đường dẫn thư mục draft>.');
+    return;
+  }
   if(!d.drafts.length){        // máy mới cài: bảng rỗng không nói được phải làm gì
-    box.innerHTML = `<h2>Draft CapCut</h2><p class="muted small mono">${esc(d.root)}</p>`
+    box.innerHTML = '<h2>Draft CapCut</h2>' + where
       + emptyBox('Chưa có draft nào', 'Sang tab Dự án, chọn một chủ đề rồi bấm "Tạo draft".');
     return;
   }
   const q = PREF.get('draftQ', '');
   box.innerHTML = `
     <h2>Draft CapCut</h2>
-    <p class="muted small mono">${esc(d.root)}</p>
+    ${where}
     <div class="row">
       <input id="qDraft" placeholder="lọc theo tên draft…" style="min-width:240px" value="${esc(q)}">
       <span class="muted small" id="qDraftN"></span>

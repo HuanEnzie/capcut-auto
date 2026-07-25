@@ -19,8 +19,8 @@ from pathlib import Path
 
 import assetlib
 
-CACHE_ROOT = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Cache"
-DRAFT_ROOT = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut" / "User Data" / "Projects" / "com.lveditor.draft"
+CACHE_ROOT = assetlib.cache_root()      # cùng một chỗ dò CapCut với các module khác
+DRAFT_ROOT = assetlib.draft_root()
 MARK = "/user data/cache/"
 
 

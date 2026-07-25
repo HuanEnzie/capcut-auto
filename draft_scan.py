@@ -11,7 +11,7 @@ from pathlib import Path
 
 import assetlib
 
-DRAFT_ROOT = Path(r"C:/Users/Acer/AppData/Local/CapCut/User Data/Projects/com.lveditor.draft")
+DRAFT_ROOT = assetlib.draft_root()      # dò từ chính cấu hình CapCut trên máy đang chạy
 
 # bucket trong materials -> kind trong kho
 BUCKET_KIND = {

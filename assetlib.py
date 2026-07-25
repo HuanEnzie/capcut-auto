@@ -44,6 +44,86 @@ def load_env(path: Path = None) -> int:
 
 load_env()
 
+
+# ─────────────────── DÒ CAPCUT TRÊN MÁY NGƯỜI DÙNG ───────────────────
+# Trước đây mỗi module tự đoán đường dẫn theo một kiểu, ba chỗ hardcode thẳng
+# "C:/Users/Acer/..." — máy khác chạy là sai ngay. Gom về một chỗ duy nhất.
+#
+# Nguồn chuẩn là chính CapCut: nó ghi thư mục draft vào
+#   <CapCut>/User Data/Config/globalSetting  ->  currentCustomDraftPath=...
+# Đọc khoá đó mới bắt được trường hợp người dùng ĐỔI thư mục draft sang ổ khác
+# trong Cài đặt của CapCut — đoán theo %LOCALAPPDATA% thì trượt.
+
+# CapCut quốc tế và Jianying (bản Trung) cùng cấu trúc, chỉ khác tên thư mục.
+_CAPCUT_DIRS = ("CapCut", "JianyingPro", "CapCut Pro")
+_DRAFT_LEAF = ("User Data", "Projects", "com.lveditor.draft")
+
+
+def _capcut_homes():
+    """Các thư mục dữ liệu CapCut có thể có trên máy này."""
+    for base in (os.environ.get("LOCALAPPDATA"), os.environ.get("APPDATA")):
+        if not base:
+            continue
+        for name in _CAPCUT_DIRS:
+            p = Path(base) / name
+            if (p / "User Data").is_dir():
+                yield p
+
+
+def _draft_path_from_settings(home: Path):
+    """Đọc currentCustomDraftPath trong globalSetting (file INI, giá trị escape \\\\)."""
+    f = home / "User Data" / "Config" / "globalSetting"
+    if not f.is_file():
+        return None
+    try:
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("currentCustomDraftPath="):
+                raw = line.split("=", 1)[1].strip().strip('"').replace("\\\\", "\\")
+                p = Path(raw)
+                if p.is_dir():
+                    return p
+    except OSError:
+        pass
+    return None
+
+
+def find_capcut(refresh: bool = False) -> dict:
+    """Dò CapCut. Trả {draft, cache, home, found, source} — luôn có đường dẫn để
+    module khác dùng được ngay cả khi máy chưa cài (khi đó found=False)."""
+    if not refresh and getattr(find_capcut, "_cache", None):
+        return find_capcut._cache
+
+    env = os.environ.get("CAPCUT_DRAFTS_ROOT")          # ưu tiên: người dùng chỉ định
+    out = None
+    if env and Path(env).is_dir():
+        home = Path(env).parents[2] if len(Path(env).parents) >= 3 else None
+        out = {"draft": Path(env), "home": home, "found": True, "source": "CAPCUT_DRAFTS_ROOT"}
+    else:
+        for home in _capcut_homes():
+            p = _draft_path_from_settings(home)          # CapCut tự khai báo
+            if p:
+                out = {"draft": p, "home": home, "found": True, "source": "globalSetting"}
+                break
+            p = home.joinpath(*_DRAFT_LEAF)              # vị trí mặc định
+            if p.is_dir():
+                out = {"draft": p, "home": home, "found": True, "source": "mặc định"}
+                break
+    if out is None:                                      # chưa cài: vẫn trả đường dẫn đoán
+        home = Path(os.environ.get("LOCALAPPDATA", "")) / "CapCut"
+        out = {"draft": home.joinpath(*_DRAFT_LEAF), "home": home,
+               "found": False, "source": "không tìm thấy CapCut"}
+    out["cache"] = (out["home"] or Path()) / "User Data" / "Cache"
+    find_capcut._cache = out
+    return out
+
+
+def draft_root() -> Path:
+    return find_capcut()["draft"]
+
+
+def cache_root() -> Path:
+    return find_capcut()["cache"]
+
 # thư mục con theo loại tài nguyên
 KIND_DIR = {
     "sticker": "sticker", "text_template": "texteffect", "audio": "sfx",

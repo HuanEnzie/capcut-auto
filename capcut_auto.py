@@ -33,8 +33,9 @@ from pathlib import Path
 # Cấu hình đường dẫn (đã dò đúng trên máy này). Có thể override bằng env
 # CAPCUT_DRAFTS_ROOT nếu cài ở nơi khác.
 # ----------------------------------------------------------------------------
-DEFAULT_ROOT = r"C:\Users\Acer\AppData\Local\CapCut\User Data\Projects\com.lveditor.draft"
-DRAFTS_ROOT = Path(os.environ.get("CAPCUT_DRAFTS_ROOT", DEFAULT_ROOT))
+import assetlib
+
+DRAFTS_ROOT = assetlib.draft_root()     # dò CapCut (env CAPCUT_DRAFTS_ROOT vẫn đè được)
 ROOT_META = DRAFTS_ROOT / "root_meta_info.json"
 
 # Giữ nguyên phong cách JSON của CapCut: minified, UTF-8 thô (không escape unicode).

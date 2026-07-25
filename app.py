@@ -113,7 +113,9 @@ def api_drafts():
                 "snapshot": (draft_diff.SNAP_DIR / f"{p.name}.json").exists(),
                 "size_kb": round(f.stat().st_size / 1024),
             })
-    return {"drafts": out, "root": str(DRAFT_ROOT)}
+    cc = assetlib.find_capcut()
+    return {"drafts": out, "root": str(DRAFT_ROOT),
+            "capcut_found": cc["found"], "capcut_source": cc["source"]}
 
 
 @app.post("/api/draft/{name}/open")

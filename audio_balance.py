@@ -27,7 +27,7 @@ TARGET = {
     "broll": -20.0,   # b-roll còn tiếng: lùi hẳn sau giọng
 }
 VOL_MAX = 10.0        # CapCut chặn hệ số nhân ở 10x (~ +20 dB)
-DRAFT_ROOT = Path(r"C:/Users/Acer/AppData/Local/CapCut/User Data/Projects/com.lveditor.draft")
+DRAFT_ROOT = assetlib.draft_root()      # dò từ chính cấu hình CapCut trên máy đang chạy
 
 
 def db_to_vol(gain_db: float) -> float:

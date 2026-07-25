@@ -17,9 +17,9 @@ CÁCH DÙNG:
 import argparse, copy, difflib, json, os, re, subprocess, sys, uuid
 from pathlib import Path
 
-DRAFTS_ROOT = Path(os.environ.get(
-    "CAPCUT_DRAFTS_ROOT",
-    r"C:\Users\Acer\AppData\Local\CapCut\User Data\Projects\com.lveditor.draft"))
+import assetlib
+
+DRAFTS_ROOT = assetlib.draft_root()     # dò CapCut (env CAPCUT_DRAFTS_ROOT vẫn đè được)
 DONOR_VIDEO = "282new"   # nguồn video-segment + transition
 DONOR_TEXT = "0720"      # nguồn text material + audio
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
