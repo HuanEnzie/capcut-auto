@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CapCut Auto Editor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2358cc02'/%3E%3Cpath d='M12 9.5 24 16 12 22.5z' fill='white'/%3E%3C/svg%3E">
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   FONT — đóng gói kèm app (assets/fonts), KHÔNG lấy từ Google Fonts.
+   CSS của Google Fonts chặn render: máy cài xong mà không có mạng sẽ trắng
+   trang tới lúc DNS timeout. display:swap -> chữ hiện ngay bằng font hệ thống.
+   ══════════════════════════════════════════════════════════════════ */
+@font-face{font-family:'Nunito';font-style:normal;font-weight:500;font-display:swap;src:url('/static/fonts/nunito-500-latin.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:500;font-display:swap;src:url('/static/fonts/nunito-500-vietnamese.woff2') format('woff2');unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:700;font-display:swap;src:url('/static/fonts/nunito-700-latin.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:700;font-display:swap;src:url('/static/fonts/nunito-700-vietnamese.woff2') format('woff2');unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:800;font-display:swap;src:url('/static/fonts/nunito-800-latin.woff2') format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Nunito';font-style:normal;font-weight:800;font-display:swap;src:url('/static/fonts/nunito-800-vietnamese.woff2') format('woff2');unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+
+/* ══════════════════════════════════════════════════════════════════
+   TOKENS — bám đúng DESIGN.md (Duolingo style reference)
+   Sửa giao diện thì sửa ở đây trước, đừng hardcode màu/kích thước bên dưới.
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  /* Colors */
+  --color-eager-green:#58cc02;
+  --color-storybook-green:#d7ffb8;
+  --color-spark-blue:#1cb0f6;
+  --color-fresh-leaf:#a5ed6e;
+  --color-night-ink:#000437;
+  --color-paper-white:#ffffff;
+  --color-charcoal:#4b4b4b;
+  --color-pencil-gray:#777777;
+  --color-faded-gray:#afafaf;
+  /* mở rộng ngoài DESIGN.md: viền mảnh cho bề mặt lớn.
+     Spec chỉ cho #afafaf, dùng 2px cho MỌI thẻ thì nặng mặt -> giữ #afafaf cho
+     phần tử tương tác (nút/input/pill) đúng spec, bề mặt lớn dùng hairline. */
+  --color-hairline:#e5e5e5;
+  --color-danger:#e5533d;
+
+  /* Typography */
+  --font-feather:'Nunito','Segoe UI Variable Display','Segoe UI',system-ui,sans-serif;
+  --font-body:'Nunito','Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --text-caption:13px;   --leading-caption:1.23;
+  --text-nav-label:15px; --leading-nav-label:1.33; --tracking-nav-label:0.053em;
+  --text-body:17px;      --leading-body:1.45;
+  --text-subheading:19px;--leading-subheading:1.4;
+  --text-heading-sm:32px;--leading-heading-sm:1.2;
+  --font-weight-medium:500; --font-weight-bold:700;
+
+  /* Spacing (base 4px, density comfortable) */
+  --spacing-8:8px; --spacing-12:12px; --spacing-16:16px; --spacing-24:24px;
+  --spacing-32:32px; --spacing-40:40px; --spacing-48:48px;
+
+  /* Layout & shape */
+  --page-max-width:1200px;
+  --card-padding:20px;
+  --element-gap:12px;
+  --radius:12px;          /* spec: KHÔNG có góc nhọn, kể cả tag/pill */
+  --border-w:2px;         /* spec: viền dày, cảm giác sticker dán lên giấy */
+}
+
+/* ══════════════════ BASE ══════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--color-paper-white);
+  color:var(--color-charcoal);
+  font-family:var(--font-body);
+  font-size:var(--text-body);
+  font-weight:var(--font-weight-medium);
+  line-height:var(--leading-body);
+}
+:focus-visible{outline:3px solid var(--color-spark-blue);outline-offset:2px;border-radius:var(--radius)}
+::selection{background:var(--color-storybook-green)}
+
+/* ══════════════════ CHROME: header + nav ══════════════════ */
+header{
+  display:flex;align-items:center;gap:var(--spacing-16);flex-wrap:wrap;
+  padding:var(--spacing-16) var(--spacing-24);
+  border-bottom:var(--border-w) solid var(--color-hairline);
+  background:var(--color-paper-white);
+}
+header .brand{font-family:var(--font-feather);font-weight:800;font-size:22px;color:var(--color-charcoal);letter-spacing:-.02em}
+header .tagline{color:var(--color-pencil-gray);font-size:var(--text-caption);line-height:var(--leading-caption)}
+.modeswitch{margin-left:auto;display:flex;gap:var(--spacing-8)}
+.modeswitch button{
+  font-family:var(--font-body);font-weight:var(--font-weight-bold);
+  font-size:var(--text-nav-label);text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
+  color:var(--color-pencil-gray);background:transparent;
+  border:var(--border-w) solid var(--color-faded-gray);border-radius:var(--radius);
+  padding:8px 16px;cursor:pointer;
+}
+.modeswitch button.on{background:var(--color-eager-green);border-color:var(--color-eager-green);color:var(--color-paper-white)}
+
+nav{display:flex;gap:var(--spacing-8);padding:var(--spacing-12) var(--spacing-24);
+    border-bottom:var(--border-w) solid var(--color-hairline);flex-wrap:wrap}
+nav[hidden]{display:none}                    /* display:flex đè mất thuộc tính hidden */
+nav button{
+  font-family:var(--font-body);font-weight:var(--font-weight-bold);
+  font-size:var(--text-nav-label);text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
+  color:var(--color-pencil-gray);background:transparent;border:0;border-radius:var(--radius);
+  padding:8px 14px;cursor:pointer;
+}
+nav button:hover{background:#f4f4f4}
+nav button.on{background:var(--color-storybook-green);color:var(--color-charcoal)}
+
+main{max-width:var(--page-max-width);margin:0 auto;padding:var(--spacing-24)}
+
+/* ══════════════════ TYPO trong app ══════════════════ */
+h2{
+  font-size:var(--text-nav-label);line-height:var(--leading-nav-label);
+  text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
+  font-weight:var(--font-weight-bold);color:var(--color-pencil-gray);
+  margin:var(--spacing-32) 0 var(--spacing-12);
+}
+h2:first-child{margin-top:0}
+.muted{color:var(--color-pencil-gray)}
+.small{font-size:var(--text-caption);line-height:var(--leading-caption)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:var(--text-caption)}
+a,.link{color:var(--color-spark-blue);font-weight:var(--font-weight-bold);text-decoration:none;cursor:pointer}
+
+/* ══════════════════ CARD / STAT ══════════════════ */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--element-gap);margin-bottom:var(--spacing-24)}
+.card{background:var(--color-paper-white);border:var(--border-w) solid var(--color-hairline);
+      border-radius:var(--radius);padding:var(--card-padding)}
+.card .n{font-family:var(--font-feather);font-size:var(--text-heading-sm);line-height:var(--leading-heading-sm);
+         font-weight:800;color:var(--color-charcoal)}
+.card .n.good{color:var(--color-eager-green)}
+.card .n.bad{color:var(--color-danger)}
+.card .l{color:var(--color-pencil-gray);font-size:var(--text-caption);line-height:var(--leading-caption);margin-top:4px}
+
+/* ══════════════════ BUTTON (spec: 12px radius, viền 2px) ══════════════════ */
+.btn{
+  font-family:var(--font-body);font-weight:var(--font-weight-bold);
+  font-size:var(--text-nav-label);text-transform:uppercase;letter-spacing:var(--tracking-nav-label);
+  border-radius:var(--radius);padding:9px 16px;cursor:pointer;border:var(--border-w) solid transparent;
+  background:var(--color-eager-green);color:var(--color-paper-white);
+}
+.btn:hover:not(:disabled){filter:brightness(.94)}
+.btn:disabled{background:var(--color-faded-gray);border-color:var(--color-faded-gray);cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--color-spark-blue);border-color:var(--color-faded-gray)}
+.btn.ghost:hover:not(:disabled){background:#f4fbff}
+.btn.ghost:disabled{background:transparent;color:var(--color-faded-gray);border-color:var(--color-hairline)}
+.btn.danger{background:transparent;color:var(--color-danger);border-color:var(--color-faded-gray)}
+.btn.sm{font-size:var(--text-caption);padding:6px 12px}
+
+/* ══════════════════ FORM ══════════════════ */
+select,input[type=text],input:not([type]){
+  font-family:var(--font-body);font-size:var(--text-nav-label);font-weight:var(--font-weight-medium);
+  color:var(--color-charcoal);background:var(--color-paper-white);
+  border:var(--border-w) solid var(--color-faded-gray);border-radius:var(--radius);padding:9px 12px;
+}
+label.fld{display:flex;flex-direction:column;gap:4px}
+label.fld>span{font-size:var(--text-caption);color:var(--color-pencil-gray);font-weight:var(--font-weight-bold)}
+
+/* ══════════════════ TABLE ══════════════════ */
+.wrap{overflow-x:auto;border:var(--border-w) solid var(--color-hairline);border-radius:var(--radius)}
+table{width:100%;border-collapse:collapse;background:var(--color-paper-white)}
+th,td{padding:11px 14px;text-align:left;font-size:var(--text-caption);line-height:var(--leading-caption);
+      border-bottom:1px solid var(--color-hairline)}
+th{background:#fafafa;color:var(--color-pencil-gray);font-weight:var(--font-weight-bold);
+   text-transform:uppercase;letter-spacing:var(--tracking-nav-label);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:#fcfdfb}
+td.actions{white-space:nowrap;display:flex;gap:var(--spacing-8);flex-wrap:wrap}
+
+/* ══════════════════ TAG / PILL ══════════════════ */
+.tag{display:inline-block;border-radius:var(--radius);border:var(--border-w) solid var(--color-faded-gray);
+     color:var(--color-pencil-gray);background:var(--color-paper-white);
+     padding:1px 9px;font-size:12px;font-weight:var(--font-weight-bold);white-space:nowrap}
+.tag.ok{color:var(--color-eager-green);border-color:var(--color-eager-green);background:var(--color-storybook-green)}
+.tag.info{color:var(--color-spark-blue);border-color:var(--color-spark-blue)}
+.tag.bad{color:var(--color-danger);border-color:var(--color-danger)}
+
+/* chỉ báo job TOÀN CỤC: theo dõi được ở mọi tab, không phải quay về tab Dự án */
+#jobBadge{margin-left:auto;display:flex;align-items:center;gap:8px;cursor:pointer;
+  background:var(--color-storybook-green);border:var(--border-w) solid var(--color-eager-green);
+  border-radius:var(--radius);padding:7px 14px;font-family:var(--font-body);
+  font-size:var(--text-caption);font-weight:var(--font-weight-bold);color:var(--color-charcoal);max-width:340px}
+#jobBadge[hidden]{display:none}
+#jobBadge .spin{width:13px;height:13px;border:2.5px solid var(--color-eager-green);
+  border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite;flex:0 0 auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+#jobBadge .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#jobBadge+.modeswitch{margin-left:var(--spacing-12)}
+
+/* thanh tiến trình thật (dữ liệu đã có sẵn trong log, chỉ là chưa dùng) */
+.prog{height:12px;border-radius:var(--radius);background:#f0f0f0;overflow:hidden;
+  border:var(--border-w) solid var(--color-hairline);margin:10px 0 6px}
+.prog>i{display:block;height:100%;background:var(--color-eager-green);transition:width .4s ease}
+.prog.idle>i{background:var(--color-faded-gray)}
+.prog.err>i{background:var(--color-danger)}    /* việc lỗi mà thanh vẫn xanh lá là đọc nhầm ngay */
+
+/* mất kết nối tới server: app đóng gói thì cửa sổ python có thể bị tắt/crash,
+   không báo thì mọi nút chỉ "im lặng không làm gì" — người dùng tưởng app hỏng */
+#offline{position:fixed;left:50%;transform:translateX(-50%);top:12px;z-index:80;display:none;
+  align-items:center;gap:10px;background:var(--color-paper-white);
+  border:var(--border-w) solid var(--color-danger);border-radius:var(--radius);
+  padding:10px 16px;font-size:var(--text-caption);font-weight:var(--font-weight-bold);
+  color:var(--color-charcoal);max-width:92vw}
+#offline.on{display:flex}
+#offline .dot{width:9px;height:9px;border-radius:50%;background:var(--color-danger);
+  animation:bl 1.1s infinite;flex:0 0 auto}
+
+/* xem trước chủ đề */
+.pv{display:grid;grid-template-columns:1fr;gap:var(--spacing-12)}
+.pv audio{width:100%;height:38px}
+.pv .lines{max-height:230px;overflow-y:auto;border:var(--border-w) solid var(--color-hairline);
+  border-radius:var(--radius);padding:var(--spacing-12);font-size:var(--text-caption);line-height:1.6}
+.pv .lines p{margin:0 0 7px} .pv .lines i{color:var(--color-pencil-gray);font-style:normal;margin-right:8px}
+.modal.wide{max-width:680px}
+.thumb{width:46px;height:46px;object-fit:contain;border-radius:var(--radius);
+  border:var(--border-w) solid var(--color-hairline);background:#fafafa;display:block}
+.thumb-none{width:46px;height:46px;border-radius:var(--radius);border:var(--border-w) dashed var(--color-hairline)}
+.row.sticky{position:sticky;top:0;z-index:20;background:var(--color-paper-white);
+  padding:var(--spacing-12) 0;border-bottom:var(--border-w) solid var(--color-hairline);margin-bottom:var(--spacing-16)}
+details.proj{margin-bottom:var(--spacing-16)}
+details.proj>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:var(--spacing-8);
+  padding:var(--spacing-12) var(--spacing-16);border:var(--border-w) solid var(--color-hairline);
+  border-radius:var(--radius);font-weight:var(--font-weight-bold);color:var(--color-charcoal)}
+details.proj>summary::-webkit-details-marker{display:none}
+details.proj>summary:hover{background:#fafafa}
+details.proj[open]>summary{border-bottom-left-radius:0;border-bottom-right-radius:0;background:var(--color-storybook-green)}
+details.proj>.inner{border:var(--border-w) solid var(--color-hairline);border-top:0;
+  border-radius:0 0 var(--radius) var(--radius);padding:var(--spacing-16)}
+.row{display:flex;gap:var(--element-gap);align-items:center;flex-wrap:wrap;margin-bottom:var(--spacing-16)}
+.bar{height:10px;border-radius:var(--radius);background:#f0f0f0;min-width:70px;overflow:hidden;
+     border:1px solid var(--color-hairline)}
+.bar>i{display:block;height:100%;background:var(--color-eager-green)}
+pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border-radius:var(--radius);
+    padding:var(--spacing-12);overflow:auto;max-height:220px;
+    font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5;margin:var(--spacing-12) 0 0}
+.pos{color:var(--color-eager-green);font-weight:var(--font-weight-bold)}
+.neg{color:var(--color-danger);font-weight:var(--font-weight-bold)}
+
+/* ══════════════════ EMPTY / SKELETON ══════════════════ */
+.empty{border:var(--border-w) dashed var(--color-faded-gray);border-radius:var(--radius);
+       padding:var(--spacing-32);text-align:center;color:var(--color-pencil-gray)}
+.empty b{display:block;color:var(--color-charcoal);font-size:var(--text-subheading);margin-bottom:6px}
+.skel{background:linear-gradient(90deg,#f2f2f2 25%,#e9e9e9 37%,#f2f2f2 63%);
+      background-size:400% 100%;animation:sk 1.2s ease-in-out infinite;border-radius:var(--radius);height:74px}
+@keyframes sk{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+/* ══════════════════ TOAST ══════════════════ */
+#toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:var(--spacing-8);z-index:60}
+.toast{background:var(--color-paper-white);border:var(--border-w) solid var(--color-eager-green);
+       border-radius:var(--radius);padding:12px 16px;max-width:380px;font-size:var(--text-caption);
+       color:var(--color-charcoal);animation:tin .18s ease-out}
+.toast.bad{border-color:var(--color-danger)}
+@keyframes tin{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+
+/* ══════════════════ MODAL (thay alert/confirm/prompt) ══════════════════ */
+#veil{position:fixed;inset:0;background:rgba(0,4,55,.35);display:none;align-items:center;justify-content:center;z-index:70;padding:20px}
+#veil.on{display:flex}
+.modal{background:var(--color-paper-white);border:var(--border-w) solid var(--color-faded-gray);
+       border-radius:var(--radius);padding:var(--spacing-24);max-width:460px;width:100%}
+.modal h3{font-family:var(--font-feather);font-size:var(--text-subheading);margin:0 0 var(--spacing-12);color:var(--color-charcoal)}
+.modal .body{font-size:var(--text-caption);color:var(--color-pencil-gray);margin-bottom:var(--spacing-16);white-space:pre-wrap}
+.modal .acts{display:flex;gap:var(--spacing-8);flex-wrap:wrap;justify-content:flex-end}
+
+/* ══════════════════ CHAT ══════════════════ */
+#chat{display:flex;flex-direction:column;gap:var(--spacing-12);min-height:300px;max-height:56vh;overflow-y:auto;
+      background:var(--color-paper-white);border:var(--border-w) solid var(--color-hairline);
+      border-radius:var(--radius);padding:var(--spacing-16)}
+.bub{max-width:76%;padding:11px 15px;border-radius:var(--radius);white-space:pre-wrap;font-size:var(--text-caption);line-height:1.55}
+.bub.u{align-self:flex-end;background:var(--color-eager-green);color:var(--color-paper-white);font-weight:var(--font-weight-bold)}
+.bub.a{align-self:flex-start;background:var(--color-paper-white);border:var(--border-w) solid var(--color-hairline)}
+.tools{align-self:flex-start;display:flex;gap:6px;flex-wrap:wrap}
+.dots span{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-faded-gray);animation:bl 1.1s infinite}
+.dots span:nth-child(2){animation-delay:.18s} .dots span:nth-child(3){animation-delay:.36s}
+@keyframes bl{0%,80%{opacity:.3}40%{opacity:1}}
+.chips{display:flex;gap:var(--spacing-8);flex-wrap:wrap;margin-top:var(--spacing-12)}
+.chip{border:var(--border-w) solid var(--color-faded-gray);border-radius:var(--radius);padding:6px 12px;
+      font-size:var(--text-caption);color:var(--color-spark-blue);font-weight:var(--font-weight-bold);
+      background:transparent;cursor:pointer;font-family:var(--font-body)}
+.chip:hover{background:#f4fbff}
+
+@media(max-width:640px){
+  main{padding:var(--spacing-16)}
+  .bub{max-width:92%}
+  header{gap:var(--spacing-8)}
+  .modeswitch{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand">CapCut Auto Editor</div>
+    <div class="tagline">kho tài nguyên tiến hoá theo gu editor · cân bằng âm thanh tự động</div>
+  </div>
+  <button id="jobBadge" hidden></button>
+  <div class="modeswitch">
+    <button id="mManual" class="on">Thủ công</button>
+    <button id="mAgent">Agent</button>
+  </div>
+</header>
+
+<nav id="navbar" role="tablist" aria-label="Khu vực làm việc">
+  <button data-t="proj" class="on" role="tab" aria-controls="proj" aria-selected="true">Dự án</button>
+  <button data-t="draft" role="tab" aria-controls="draft" aria-selected="false">Draft</button>
+  <button data-t="audio" role="tab" aria-controls="audio" aria-selected="false">Âm thanh</button>
+  <button data-t="lib" role="tab" aria-controls="lib" aria-selected="false">Kho tài nguyên</button>
+</nav>
+
+<main>
+  <section id="proj" role="tabpanel"></section>
+  <section id="draft" role="tabpanel" hidden></section>
+  <section id="audio" role="tabpanel" hidden></section>
+  <section id="lib" role="tabpanel" hidden></section>
+  <section id="agent" hidden>
+    <div class="row" style="justify-content:space-between">
+      <span class="muted small">Ra lệnh bằng tiếng Việt — agent tự chọn việc, tự hỏi khi thiếu thông tin, và nhớ ngữ cảnh.</span>
+      <button class="btn ghost sm" id="btnReset">Xoá hội thoại</button>
+    </div>
+    <div id="chat"></div>
+    <div class="row" style="margin-top:12px">
+      <input id="msg" style="flex:1;min-width:300px" aria-label="Câu lệnh cho agent"
+             placeholder="vd: dựng chủ đề điểm cao nhất của 2006 theo gu Đan">
+      <button class="btn" id="btnSend">Gửi</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+<div id="offline"><span class="dot"></span><span>Mất kết nối tới app — cửa sổ chạy <span class="mono">python app.py</span> còn mở không? Đang thử lại…</span></div>
+<div id="veil"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mdTitle" tabindex="-1">
+  <h3 id="mdTitle"></h3><div class="body" id="mdBody"></div><div class="acts" id="mdActs"></div>
+</div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+/* escape cả nháy: tên draft/tài nguyên được nhét vào thuộc tính HTML, một dấu
+   nháy trong tên là vỡ cả bảng. */
+const esc = s => String(s??'').replace(/[<>&"']/g,
+  c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- nhớ lựa chọn giữa các lần mở app ----------
+   Bắt editor chọn lại thư mục record + gu + tab mỗi lần mở là bắt họ làm việc
+   không công, ngày mấy chục lần. */
+const PREF = {
+  get(k, d){ try{ const v = localStorage.getItem('cc.'+k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('cc.'+k, JSON.stringify(v)); }catch(e){} },
+};
+
+/* ---------- gọi API ----------
+   Mọi lỗi MẠNG quy về một banner. App đóng gói thì cửa sổ python có thể bị tắt
+   hoặc crash — không báo thì mọi nút chỉ "im lặng không làm gì", người dùng
+   tưởng app hỏng và bấm loạn lên. */
+let OFFLINE = false;
+function setOffline(v){
+  if(v === OFFLINE) return;
+  OFFLINE = v; $('#offline').classList.toggle('on', v);
+  if(!v) toast('Đã kết nối lại');
+}
+async function api(u, o){
+  let r;
+  try{ r = await fetch(u, o); }
+  catch(e){ setOffline(true); throw 'Không gọi được app — mất kết nối'; }
+  setOffline(false);
+  if(r.ok) return r.json();
+  throw await r.json().then(e => e.detail || ('Lỗi ' + r.status)).catch(() => 'Lỗi ' + r.status);
+}
+
+/* ---------- 4 trạng thái bắt buộc của một khu vực (docs/UI.md mục 6) ----------
+   Trước đây loader nào lỗi là skeleton nằm lại vĩnh viễn — nhìn y như app treo,
+   mà lỗi thật (thiếu ffmpeg, sai đường dẫn draft) thì không ai đọc được. */
+const RETRY = {};
+async function guard(sel, load){
+  RETRY[sel] = () => guard(sel, load);
+  try{ await load(); }
+  catch(e){
+    $(sel).innerHTML = `<div class="empty"><b>Không tải được khu vực này</b>${esc(String(e))}</div>
+      <div class="row" style="justify-content:center;margin-top:12px">
+        <button class="btn ghost" data-act="retry" data-sel="${sel}">Thử lại</button></div>`;
+  }
+}
+
+/* Nút chạy việc nặng phải KHOÁ trong lúc chạy. Bấm hai lần "Tạo draft" là dựng
+   đè lên chính nó; bấm hai lần "Phân tích" là hai job giành cùng một GPU. */
+async function busy(btn, label, fn){
+  if(btn && btn.disabled) return;             // (gọi không kèm nút vẫn chạy: hành động
+  const old = btn && btn.textContent;         //  trong hộp thoại không có nút để khoá)
+  if(btn){ btn.disabled = true; btn.textContent = label; }
+  try{ return await fn(); }
+  finally{ if(btn){ btn.disabled = false; btn.textContent = old; } }
+}
+
+/* Xin quyền thông báo ĐÚNG LÚC bắt đầu việc chạy lâu, không phải ngay cú bấm
+   đầu tiên vào app — hỏi khi chưa có việc gì thì ai cũng bấm "Chặn". */
+function askNotify(){
+  try{ if(window.Notification && Notification.permission === 'default') Notification.requestPermission(); }
+  catch(e){}
+}
+
+/* Hành động trong bảng đi qua data-act, KHÔNG dùng onclick="fn('${name}')":
+   tên draft có dấu nháy là hỏng handler, và nội dung từ server không nên
+   biến thành mã chạy được. */
+const ACTIONS = {};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if(!el || el.disabled) return;
+  const f = ACTIONS[el.dataset.act];
+  if(!f) return;
+  e.preventDefault();
+  f(el.dataset, el);
+});
+
+/* ---------- toast: thay alert() ---------- */
+function toast(msg, bad){
+  const d = document.createElement('div');
+  d.className = 'toast' + (bad?' bad':''); d.textContent = msg;
+  $('#toasts').appendChild(d);
+  setTimeout(()=>{ d.style.opacity='0'; d.style.transition='opacity .3s'; setTimeout(()=>d.remove(),300); }, bad?6000:3600);
+}
+/* ---------- modal: thay confirm() / prompt() ----------
+   MỘT chỗ xử lý đóng cho MỌI hộp thoại. Trước đây preview() tự mở veil mà không
+   đăng ký Esc -> veil kẹt lại chặn hết click của cả trang. */
+let MODAL_CLOSE = null, MODAL_PREV = null;
+function openVeil(){
+  MODAL_PREV = document.activeElement;      // đóng hộp thoại phải trả tiêu điểm về
+  $('#veil').classList.add('on');            // đúng chỗ vừa bấm, không nhảy về đầu trang
+}
+function closeModal(){
+  $('#veil').classList.remove('on');
+  document.querySelector('.modal').classList.remove('wide');
+  const f = MODAL_CLOSE; MODAL_CLOSE = null; if(f) f();
+  if(MODAL_PREV && MODAL_PREV.isConnected) MODAL_PREV.focus();
+  MODAL_PREV = null;
+}
+document.addEventListener('keydown', e=>{
+  if(!$('#veil').classList.contains('on')) return;
+  if(e.key === 'Escape'){ closeModal(); return; }
+  if(e.key === 'Tab'){                       // giữ tiêu điểm trong hộp thoại
+    const f = [...document.querySelectorAll('#veil button, #veil audio, #veil [href]')];
+    if(!f.length) return;
+    const first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+});
+$('#veil').addEventListener('click', e=>{ if(e.target===$('#veil')) closeModal(); });
+function modal({title, body='', actions}){
+  return new Promise(resolve=>{
+    $('#mdTitle').textContent = title;
+    $('#mdBody').textContent = body;
+    const box = $('#mdActs'); box.innerHTML = '';
+    MODAL_CLOSE = () => resolve(null);
+    const pick = v => { MODAL_CLOSE = null; closeModal(); resolve(v); };
+    const acts = actions || [{label:'Đóng', value:null}];
+    /* Tiêu điểm KHÔNG được rơi vào nút phá huỷ: hộp "Ghi đè draft" mà focus sẵn
+       nút Ghi đè thì một phát Enter theo phản xạ là mất bản editor vừa sửa. */
+    const safe = Math.max(0, acts.findIndex(a => a.style !== 'danger'));
+    acts.forEach((a,i)=>{
+      const b = document.createElement('button');
+      b.className = 'btn' + (a.style==='ghost'?' ghost':'') + (a.style==='danger'?' danger':'');
+      b.textContent = a.label; b.onclick = ()=>pick(a.value);
+      box.appendChild(b); if(i===safe) setTimeout(()=>b.focus(),30);
+    });
+    openVeil();
+  });
+}
+const confirmBox = (title, body) => modal({title, body, actions:[
+  {label:'Đồng ý', value:true}, {label:'Huỷ', value:false, style:'ghost'}]});
+
+const skeleton = n => `<div class="cards">${'<div class="skel"></div>'.repeat(n||4)}</div>`;
+const emptyBox = (title, hint) => `<div class="empty"><b>${esc(title)}</b>${esc(hint||'')}</div>`;
+
+/* ---------- chuyển chế độ / tab ----------
+   Tab và chế độ được NHỚ: người dùng ở tab Âm thanh cả buổi, mỗi lần Ctrl+F5
+   lại bị ném về tab Dự án là mất mạch việc. */
+const SECTS = ['proj','draft','audio','lib'];
+const LOADERS = {proj:loadProj, draft:loadDrafts, audio:loadAudio, lib:loadLib};
+let TAB = PREF.get('tab', 'proj');
+function showTab(t){
+  if(!LOADERS[t]) t = 'proj';
+  TAB = t; PREF.set('tab', t);
+  document.querySelectorAll('nav button').forEach(x => {
+    const on = x.dataset.t === t;
+    x.classList.toggle('on', on); x.setAttribute('aria-selected', on);
+  });
+  SECTS.forEach(s => $('#'+s).hidden = (s !== t));
+  guard('#'+t, LOADERS[t]);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+function setMode(agentMode){
+  PREF.set('agent', agentMode);
+  $('#mManual').classList.toggle('on', !agentMode);
+  $('#mAgent').classList.toggle('on', agentMode);
+  $('#navbar').hidden = agentMode;
+  $('#agent').hidden = !agentMode;
+  if(agentMode){ SECTS.forEach(t=>$('#'+t).hidden=true); loadChat(); }
+  else showTab(TAB);
+}
+$('#mManual').onclick = ()=>setMode(false);
+$('#mAgent').onclick  = ()=>setMode(true);
+ACTIONS.retry = d => RETRY[d.sel] && RETRY[d.sel]();
+
+/* ══════════════════ TAB: DỰ ÁN (luồng chính) ══════════════════ */
+let JOB_TIMER=null, PROJ=null;
+/* "24/07 17:50" — toLocaleString('vi') trả "17:50 24-07", đọc lướt hay nhầm giờ với ngày */
+const vnTime = ms => {
+  const d = new Date(ms), p = n => String(n).padStart(2,'0');
+  const y = d.getFullYear() !== new Date().getFullYear() ? '/'+d.getFullYear() : '';
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}${y} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+async function loadProj(){
+  const box = $('#proj'); box.innerHTML = skeleton(3);
+  const [d, ed] = await Promise.all([api('/api/projects'), api('/api/editors')]);
+  PROJ = d;
+  const noKey = !ed.keys.gemini || !ed.keys.pexels;
+  const curEd = PREF.get('editor', ''), curAsr = PREF.get('asr', 'small');
+  const opt = (v, label, sel) => `<option value="${esc(v)}" ${v===sel?'selected':''}>${esc(label)}</option>`;
+  box.innerHTML = `
+    <h2>Thêm record mới</h2>
+    <div class="row">
+      <label class="fld"><span>Thư mục</span>
+        <input id="dirIn" style="width:250px" value="${esc(PREF.get('dir',''))}" placeholder="đang lấy mặc định…"></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét</button></label>
+      <label class="fld"><span>File record</span>
+        <select id="fileSel" style="min-width:300px"><option>— bấm Quét —</option></select></label>
+      <label class="fld"><span>Độ chính xác</span>
+        <select id="asrSel">${opt('small','small — nhanh',curAsr)}${opt('medium','medium — chuẩn hơn',curAsr)}</select></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn" id="btnIngest"
+        ${ed.keys.gemini?'':'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"'}>Phân tích</button></label>
+    </div>
+    ${noKey?`<div class="empty" style="text-align:left;padding:var(--spacing-16);border-color:var(--color-danger)">
+       <b>Thiếu API key: ${!ed.keys.gemini?'GEMINI_API_KEY ':''}${!ed.keys.pexels?'PEXELS_API_KEY':''}</b>
+       ${!ed.keys.gemini?'Không có GEMINI_API_KEY thì bóc lời xong vẫn KHÔNG trích được chủ đề — nút Phân tích và chế độ Agent bị khoá. ':''}
+       ${!ed.keys.pexels?'Không có PEXELS_API_KEY thì draft dựng ra sẽ thiếu B-roll. ':''}
+       Đóng app, mở lại bằng: <span class="mono">set GEMINI_API_KEY=... &amp; set PEXELS_API_KEY=... &amp; python app.py</span>
+     </div>`:''}
+
+    <h2>Chọn chủ đề để dựng</h2>
+    <div class="row sticky">
+      <label class="fld"><span>Dựng theo gu editor</span>
+        <select id="edSel">${ed.editors.map(e=>opt(e, e, curEd || ed.editors[0])).join('')}</select></label>
+      <span class="muted small">Draft đặt tên <span class="mono">&lt;dự án&gt;_t&lt;chủ đề&gt;_&lt;editor&gt;</span> — dựng lại cùng gu sẽ ghi đè bản cũ.</span>
+    </div>
+    ${d.projects.length ? d.projects.map((p,pi)=>`
+      <details class="proj" ${pi===0?'open':''}>
+        <summary>${esc(p.name)}
+          <span class="tag">${p.topics.length} chủ đề</span>
+          ${p.has_transcript?'<span class="tag ok">có transcript</span>':''}
+          ${p.topics.some(t=>t.drafts.length)?`<span class="tag info">${p.topics.filter(t=>t.drafts.length).length} đã dựng</span>`:''}</summary>
+        <div class="inner">
+        ${p.topics.length ? `<div class="wrap"><table>
+          <thead><tr><th>#</th><th>Chủ đề</th><th>Điểm</th><th>Dài</th><th>Đã dựng</th><th></th></tr></thead>
+          <tbody>${p.topics.map(t=>`<tr>
+            <td class="mono">${t.i}</td><td>${esc(t.title)}</td>
+            <td class="mono"><b>${t.score??''}</b></td><td class="mono">${t.dur}s</td>
+            <td>${t.drafts.map(x=>`<span class="tag ${x.locked?'bad':'ok'}"
+                   title="${esc(x.name)} · ${x.locked?'đang mở trong CapCut · ':''}sửa lần cuối ${vnTime(x.mtime*1000)}"
+                   >${esc(x.editor)}</span>`).join(' ') || '<span class="muted">—</span>'}</td>
+            <td class="actions">
+              <button class="btn ghost sm" data-act="preview" data-proj="${esc(p.name)}" data-i="${t.i}">Xem trước</button>
+              <button class="btn ghost sm" data-act="gen" data-proj="${esc(p.name)}" data-i="${t.i}">Tạo draft</button></td>
+          </tr>`).join('')}</tbody></table></div>`
+          : emptyBox('Không có chủ đề nào đạt ngưỡng', 'Record này không có đoạn nào đủ điểm để làm short.')}
+        </div></details>`
+      ).join('')
+      : emptyBox('Chưa có record nào được phân tích', 'Quét thư mục ở trên, chọn file rồi bấm Phân tích.')}
+
+    <h2>Tiến trình</h2>
+    <div id="jobs"></div>`;
+  $('#btnBrowse').onclick = e => browse(e.currentTarget, true);   // bấm tay = quét lại thật
+  $('#btnIngest').onclick = e => ingest(e.currentTarget);
+  $('#asrSel').onchange = e => PREF.set('asr', e.target.value);
+  $('#edSel').onchange  = e => PREF.set('editor', e.target.value);
+  browse(); pollJobs();
+}
+/* Quét thư mục = chạy ffprobe từng file, vài giây. Tab Dự án vẽ lại mỗi lần job
+   xong, nên nhớ kết quả lần trước; bấm "Quét" mới quét thật lại. */
+let SCAN = {key:null, dir:null, html:null};
+async function browse(btn, force){
+  const sel = $('#fileSel'); if(!sel) return;
+  const want = $('#dirIn').value.trim();
+  if(!force && SCAN.html && (SCAN.key === want || SCAN.dir === want)){ sel.innerHTML = SCAN.html; return; }
+  sel.innerHTML = '<option>đang quét…</option>';
+  await busy(btn, 'Đang quét…', async () => {
+    try{
+      const d = await api('/api/browse?dir='+encodeURIComponent(want));
+      $('#dirIn').value = d.dir; PREF.set('dir', d.dir);   // bỏ trống -> server tự chọn mặc định
+      const html = d.files.length
+        ? d.files.map(f=>`<option value="${esc(f.path)}">${esc(f.name)} · ${f.dur_min} phút`
+            + `${f.video?'':' · 🎧 chỉ tiếng'} · xử lý ~${f.eta_min} phút</option>`).join('')
+        : '<option>— không có file record —</option>';
+      SCAN = {key: want, dir: d.dir, html};
+      sel.innerHTML = html;
+    }catch(e){ SCAN = {key:null, dir:null, html:null}; sel.innerHTML = `<option>${esc(e)}</option>`; }
+  });
+}
+async function ingest(btn){
+  const sel = $('#fileSel'), path = sel.value;
+  if(!path || path.startsWith('—') || path.startsWith('đang')) return toast('Chưa chọn file record', true);
+  const label = sel.options[sel.selectedIndex].text;
+  if(!await confirmBox('Phân tích record?', label + '\n\nChạy nền — theo dõi ở mục Tiến trình.')) return;
+  await busy(btn, 'Đang gửi…', async () => {
+    try{
+      await api(`/api/ingest?path=${encodeURIComponent(path)}&asr=${$('#asrSel').value}`,{method:'POST'});
+      toast('Đã khởi động phân tích'); askNotify(); startPolling();
+    }catch(e){ toast(String(e), true); }
+  });
+}
+/* Dựng draft GHI ĐÈ tại chỗ (build_short_draft.py). Bấm lại chủ đề đã dựng là
+   xoá sạch phần editor sửa tay trong CapCut -> phải hỏi, và phải chặn sớm khi
+   draft đang mở, thay vì để build chạy 3 phút rồi mới báo .locked. */
+async function gen(proj, topic, btn){
+  const editor = $('#edSel').value;
+  const name = `${proj}_t${topic}_${editor}`;
+  const t = PROJ?.projects.find(p => p.name === proj)?.topics.find(x => x.i === topic);
+  const old = (t?.drafts || []).find(x => x.name === name);
+  if(old && old.locked)
+    return modal({title:'Draft đang mở trong CapCut', body:
+      `"${name}" đang mở (.locked) nên không ghi được.\nĐóng nó trong CapCut (về màn hình danh sách) rồi bấm lại.`,
+      actions:[{label:'Đã hiểu', value:null}]});
+  if(old && !await modal({title:'Dựng lại sẽ ghi đè draft cũ', body:
+      `"${name}" đã dựng lúc ${vnTime(old.mtime*1000)}.\n`
+      + 'Dựng lại sẽ GHI ĐÈ — mọi thứ editor đã sửa tay trong CapCut sẽ mất.',
+      actions:[{label:'Ghi đè', value:true, style:'danger'}, {label:'Huỷ', value:false, style:'ghost'}]}))
+    return;
+  await busy(btn, 'Đang gửi…', async () => {
+    try{
+      const r = await api(`/api/project/${proj}/generate?topic=${topic}&editor=${editor}`,{method:'POST'});
+      toast(`Đang dựng "${r.draft}" theo gu ${editor}`); askNotify(); startPolling();
+    }catch(e){ toast(String(e), true); }
+  });
+}
+ACTIONS.preview = (d, el) => preview(d.proj, +d.i, el);
+ACTIONS.gen     = (d, el) => gen(d.proj, +d.i, el);
+function startPolling(){ if(!JOB_TIMER) JOB_TIMER = setInterval(pollJobs, 1500); pollJobs(); }
+
+/* Đọc TIẾN TRÌNH THẬT từ log. Pipeline vốn đã in "(1:19:06/3:55:06)" và tên từng
+   giai đoạn — dữ liệu có sẵn, trước đây chỉ hiện 4 dòng chữ nên không ai đọc ra. */
+const hms = s => s.split(':').reduce((a,b)=>a*60+ +b, 0);
+const PHASES = [['[asr-fine]','bóc kỹ đoạn'],['[nhịp]','cắt khoảng lặng'],['[enrich]','AI chọn hook & SFX'],
+  ['[base]','dựng nền video'],['[kết]','đuôi kết'],['[caption-fix]','sửa caption'],
+  ['[broll]','tải B-roll'],['[P4]','áp gu editor'],['[sfx]','chèn SFX']];
+/* "còn ~12 phút" trả lời đúng câu người dùng đang hỏi; "43%" thì không. */
+const etaTxt = s => (s == null || !isFinite(s) || s <= 0) ? ''
+  : s < 45 ? ' · sắp xong'
+  : s < 5400 ? ` · còn ~${Math.round(s/60)} phút`
+  : ` · còn ~${(s/3600).toFixed(1)} tiếng`;
+function jobProgress(j){
+  const log = j.log||[];
+  if(j.state==='done')  return {pct:100, label:'hoàn tất'};
+  if(j.state==='error') return {pct:100, label:'lỗi'};
+  /* Bước Gemini của luồng phân tích record KHÔNG in mốc thời gian nào. Không bắt
+     riêng thì thanh đứng mãi ở "bóc lời 3:55:06 / 3:55:06" — nhìn y như treo. */
+  if(log.some(l => l.includes('[2/2]'))) return {pct:94, label:'Gemini trích chủ đề'};
+  const elapsed = Math.max(1, Date.now()/1000 - (j.ts || 0));
+  for(let i=log.length-1;i>=0;i--){                        // ưu tiên mốc thời gian thật
+    const m = log[i].match(/\((\d+(?::\d{2}){1,2})\/(\d+(?::\d{2}){1,2})\)/);
+    if(m){
+      const a=hms(m[1]), b=hms(m[2]);
+      if(b>0) return {pct:Math.min(98, a/b*100), label:`bóc lời ${m[1]} / ${m[2]}`,
+                      eta: a>0 ? elapsed*(b-a)/a : null};   // suy từ tốc độ THẬT của máy này
+    }
+  }
+  let step=-1, name='';                                    // không có thì suy từ giai đoạn
+  log.forEach(l => PHASES.forEach(([k,n],i)=>{ if(l.includes(k) && i>step){ step=i; name=n; } }));
+  if(step>=0) return {pct:(step+1)/PHASES.length*100, label:name};
+  return {pct:6, label:'đang khởi động'};
+}
+function notifyDone(j){
+  const msg = j.state==='error' ? `Lỗi: ${j.title}` : `Xong: ${j.title}`;
+  toast(msg, j.state==='error');
+  try{
+    if(window.Notification && Notification.permission==='granted') new Notification('CapCut Auto Editor', {body:msg});
+  }catch(e){}
+  document.title = (j.state==='error'?'⚠ ':'✅ ') + 'CapCut Auto Editor';
+  setTimeout(()=>document.title='CapCut Auto Editor', 8000);
+}
+const SEEN_DONE = new Set();
+const JOB_DONE_CB = {};      // việc nào cần làm tiếp khi job XONG THẬT (thay vì đoán bằng setTimeout)
+let JOBS_HTML = '';
+async function pollJobs(){
+  const d = await api('/api/jobs').catch(()=>({jobs:[]}));
+  const running = d.jobs.filter(j=>j.state==='running');
+
+  /* badge toàn cục — thấy được ở MỌI tab, kể cả chế độ Agent */
+  const bg = $('#jobBadge');
+  if(running.length){
+    const p = jobProgress(running[0]);
+    bg.hidden = false;
+    bg.innerHTML = `<span class="spin"></span><span class="txt">${esc(running[0].title)} · ${Math.round(p.pct)}%`
+                 + `${esc(etaTxt(p.eta))}${running.length>1?` (+${running.length-1})`:''}</span>`;
+    bg.title = 'Bấm để xem tiến trình';
+    bg.onclick = ()=>{ if($('#agent').hidden===false) setMode(false);
+                       showTab('proj');
+                       setTimeout(()=>$('#jobs')?.scrollIntoView({behavior:'smooth'}),300); };
+  } else bg.hidden = true;
+
+  d.jobs.filter(j=>j.state!=='running' && !SEEN_DONE.has(j.id)).forEach(j=>{
+    SEEN_DONE.add(j.id); notifyDone(j);
+    const cb = JOB_DONE_CB[j.id];
+    if(cb){ delete JOB_DONE_CB[j.id]; try{ cb(j); }catch(e){} }
+    /* Xong việc thì màn hình phải TỰ đúng: dựng xong mà tab Dự án vẫn ghi "chưa
+       dựng", tab Draft vẫn thiếu draft mới, là người dùng phải tự F5 mới tin. */
+    if(j.result && j.result.project && !$('#proj').hidden) guard('#proj', loadProj);
+    if(j.result && j.result.draft){
+      if(!$('#proj').hidden)  guard('#proj', loadProj);
+      if(!$('#draft').hidden) guard('#draft', loadDrafts);
+    }
+  });
+  if(!running.length && JOB_TIMER){ clearInterval(JOB_TIMER); JOB_TIMER=null; }
+
+  const box = $('#jobs'); if(!box) return;
+  if(!d.jobs.length){ box.innerHTML = '<p class="muted small">Chưa có việc nào chạy.</p>'; return; }
+  const html = d.jobs.slice(0,6).map(j=>{
+    const p = jobProgress(j);
+    const st = j.state==='running' ? '<span class="tag info">đang chạy</span>'
+             : j.state==='done'    ? '<span class="tag ok">xong</span>'
+             : '<span class="tag bad">lỗi</span>';
+    const draft = j.result && j.result.draft;
+    const log = (j.log||[]);
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="row" style="margin:0"><b class="small">${esc(j.title)}</b> ${st}
+        ${draft?`<span class="tag ok">${esc(draft)}</span>`:''}
+        <span style="margin-left:auto;display:flex;gap:8px">
+        ${draft && j.state==='done'?`<button class="btn ghost sm" data-act="open" data-name="${esc(draft)}">Mở thư mục</button>`:''}
+        ${log.length>3?`<button class="btn ghost sm" data-act="log" data-id="${esc(j.id)}">Log đầy đủ</button>`:''}
+        </span></div>
+      <div class="prog${j.state==='running'?'':(j.state==='error'?' err':' idle')}"><i style="width:${p.pct}%"></i></div>
+      <div class="muted small">${esc(p.label)}${esc(j.state==='running'?etaTxt(p.eta):'')}</div>
+      ${log.length?`<pre>${log.slice(-3).map(esc).join('\n')}</pre>`:''}</div>`;
+  }).join('');
+  /* chỉ vẽ lại khi ĐỔI: vẽ lại mỗi 1.5s làm mất vệt bôi đen khi người dùng đang
+     copy dòng log lỗi ra để hỏi. */
+  if(html !== JOBS_HTML){ JOBS_HTML = html; box.innerHTML = html; }
+}
+ACTIONS.log  = d => fullLog(d.id);
+ACTIONS.open = async (d, el) => busy(el, 'Đang mở…', async () => {
+  try{ await api(`/api/draft/${encodeURIComponent(d.name)}/open`, {method:'POST'}); }
+  catch(e){ toast(String(e), true); }
+});
+/* XEM TRƯỚC CHỦ ĐỀ — trước đây chỉ có tiêu đề + điểm, muốn biết nội dung thật
+   phải dựng draft rồi mở CapCut nghe. Với 16 chủ đề thì đó là chọn mù. */
+async function preview(proj, idx){
+  $('#mdTitle').textContent = 'Đang tải…'; $('#mdBody').innerHTML=''; $('#mdActs').innerHTML='';
+  document.querySelector('.modal').classList.add('wide');
+  MODAL_CLOSE = ()=>{};      // Esc / bấm ra ngoài đóng được
+  openVeil();
+  try{
+    const d = await api(`/api/project/${proj}/topic/${idx}/preview`);
+    const mm = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    $('#mdTitle').textContent = d.title || `Chủ đề ${idx}`;
+    $('#mdBody').innerHTML = `<div class="pv">
+      <div class="row" style="margin:0">
+        <span class="tag ok">điểm ${d.total ?? '—'}</span>
+        ${(d.scores||[]).map(s=>`<span class="tag">${esc(s.name)} ${s.score}</span>`).join('')}
+        ${(d.ranges||[]).map(r=>`<span class="tag info">${mm(r[0])}–${mm(r[1])}</span>`).join('')}
+      </div>
+      ${d.summary?`<div><b>Tóm tắt.</b> ${esc(d.summary)}</div>`:''}
+      ${d.hook?`<div><b>Góc hook.</b> ${esc(d.hook)}</div>`:''}
+      <div><b>Nghe thử 40 giây đầu</b>
+        <audio controls preload="none" src="/api/project/${proj}/topic/${idx}/audio"></audio></div>
+      ${d.lines&&d.lines.length?`<div><b>Nội dung</b><div class="lines">${
+        d.lines.map(l=>`<p><i class="mono">${mm(l.sec)}</i>${esc(l.text)}</p>`).join('')}</div></div>`:''}
+    </div>`;
+    const acts = $('#mdActs');
+    const mk = (label, cls, fn) => { const b=document.createElement('button'); b.className='btn '+cls;
+      b.textContent=label; b.onclick=fn; acts.appendChild(b); };
+    mk('Tạo draft từ chủ đề này','', ()=>{ closeModal(); gen(proj, idx); });
+    mk('Đóng','ghost', closeModal);
+    /* Tiêu điểm vào KHUNG hộp thoại, không vào nút: Enter lỡ tay không được
+       châm ngòi một lượt dựng 3 phút, mà Tab vẫn đi đúng vào trong hộp. */
+    document.querySelector('.modal').focus();
+  }catch(e){
+    $('#mdTitle').textContent='Không xem trước được';
+    $('#mdBody').textContent=String(e);
+    const b=document.createElement('button'); b.className='btn ghost'; b.textContent='Đóng';
+    b.onclick=closeModal; $('#mdActs').appendChild(b);
+  }
+}
+async function fullLog(id){
+  const d = await api('/api/jobs');
+  const j = d.jobs.find(x=>x.id===id); if(!j) return;
+  modal({title:j.title, body:(j.log||[]).join('\n'), actions:[{label:'Đóng',value:null}]});
+}
+
+/* ══════════════════ TAB: DRAFT ══════════════════ */
+async function loadDrafts(){
+  const box = $('#draft'); box.innerHTML = skeleton(2);
+  const d = await api('/api/drafts');
+  if(!d.drafts.length){        // máy mới cài: bảng rỗng không nói được phải làm gì
+    box.innerHTML = `<h2>Draft CapCut</h2><p class="muted small mono">${esc(d.root)}</p>`
+      + emptyBox('Chưa có draft nào', 'Sang tab Dự án, chọn một chủ đề rồi bấm "Tạo draft".');
+    return;
+  }
+  const q = PREF.get('draftQ', '');
+  box.innerHTML = `
+    <h2>Draft CapCut</h2>
+    <p class="muted small mono">${esc(d.root)}</p>
+    <div class="row">
+      <input id="qDraft" placeholder="lọc theo tên draft…" style="min-width:240px" value="${esc(q)}">
+      <span class="muted small" id="qDraftN"></span>
+      <span class="muted small" style="margin-left:auto">Vòng làm việc: chụp mốc → editor sửa trong CapCut → đồng bộ về kho.</span>
+    </div>
+    <div class="wrap"><table>
+      <thead><tr><th>Draft</th><th>Trạng thái</th><th>Sửa lần cuối</th><th>Hành động</th></tr></thead>
+      <tbody id="draftRows"></tbody></table></div>
+    <div id="diffOut"></div>`;
+  const rows = () => {
+    const f = ($('#qDraft').value||'').toLowerCase();
+    const list = d.drafts.filter(x => !f || x.name.toLowerCase().includes(f));
+    $('#qDraftN').textContent = `${list.length}/${d.drafts.length} draft`;
+    $('#draftRows').innerHTML = list.length ? list.map(x=>`<tr>
+        <td><b>${esc(x.name)}</b></td>
+        <td>${x.locked?'<span class="tag bad">đang mở trong CapCut</span>':'<span class="tag ok">rảnh</span>'}
+            ${x.snapshot?'<span class="tag info">có mốc</span>':'<span class="tag">chưa có mốc</span>'}</td>
+        <td class="mono">${vnTime(x.mtime*1000)}</td>
+        <td class="actions">
+          <button class="btn ghost sm" data-act="snap" data-name="${esc(x.name)}">Chụp mốc</button>
+          <button class="btn ghost sm" data-act="diff" data-name="${esc(x.name)}" ${x.snapshot?'':'disabled title="Cần chụp mốc trước"'}>Editor sửa gì</button>
+          <button class="btn ghost sm" data-act="sync" data-name="${esc(x.name)}" ${x.snapshot&&!x.locked?'':'disabled title="Cần có mốc và đóng draft trong CapCut"'}>Đồng bộ về kho</button>
+          <button class="btn ghost sm" data-act="open" data-name="${esc(x.name)}" title="Mở thư mục draft trong Explorer">Mở thư mục</button>
+        </td></tr>`).join('')
+      : `<tr><td colspan="4" class="muted">Không có draft nào khớp "${esc($('#qDraft').value)}"</td></tr>`;
+  };
+  $('#qDraft').oninput = e => { PREF.set('draftQ', e.target.value); rows(); };
+  rows();
+}
+async function snapDraft(n, btn){
+  await busy(btn, 'Đang chụp…', async () => {
+    try{ await api(`/api/draft/${encodeURIComponent(n)}/snapshot`,{method:'POST'});
+         toast(`Đã chụp mốc "${n}" — giờ editor sửa trong CapCut, xong bấm "Editor sửa gì"`);
+         guard('#draft', loadDrafts); }
+    catch(e){ toast(String(e), true); }
+  });
+}
+ACTIONS.snap = (d, el) => snapDraft(d.name, el);
+ACTIONS.diff = (d, el) => showDiff(d.name, el);
+ACTIONS.sync = (d, el) => syncDraft(d.name, el);
+async function showDiff(n, btn){
+  const out = $('#diffOut'); out.innerHTML = '<h2>Đang so sánh…</h2>';
+  await busy(btn, 'Đang so…', async () => {
+  try{
+    const d = await api(`/api/draft/${encodeURIComponent(n)}/diff`);
+    const rows = (arr,cls) => arr.length ? arr.map(r=>`<tr><td><span class="tag ${cls}">${esc(r.kind)}</span></td>
+        <td>${esc(r.name)||'—'}</td><td class="mono muted">${esc(r.resource_id||'')}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="muted">— không có —</td></tr>';
+    const changed = d.added.length + d.removed.length;
+    out.innerHTML = `<h2>${esc(n)} — editor đã thay đổi</h2>
+      <div class="cards">
+        <div class="card"><div class="n good">${d.added.length}</div><div class="l">thêm mới → vào kho</div></div>
+        <div class="card"><div class="n bad">${d.removed.length}</div><div class="l">bị gỡ → hạ ưu tiên</div></div>
+        <div class="card"><div class="n">${d.kept.length}</div><div class="l">giữ nguyên</div></div>
+      </div>
+      ${changed ? `<div class="wrap"><table><thead><tr><th>Loại</th><th>Tên</th><th>resource_id</th></tr></thead>
+          <tbody>${rows(d.added,'ok')}${rows(d.removed,'bad')}</tbody></table></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" data-act="sync" data-name="${esc(n)}">Đồng bộ về kho</button>
+          <span class="muted small">Nạp phần vừa thêm vào kho của editor — lần sau app tự dùng đúng gu đó.</span>
+        </div>`
+        : emptyBox('Editor chưa sửa gì so với mốc',
+                   'Mở draft trong CapCut, sửa theo gu rồi Ctrl+S và ĐÓNG draft, sau đó so lại.')}`;
+    out.scrollIntoView({behavior:'smooth', block:'nearest'});   // kết quả nằm dưới bảng dài
+  }catch(e){ out.innerHTML = `<p class="neg">${esc(e)}</p>`; }
+  });
+}
+async function syncDraft(n, btn){
+  const eds = await api('/api/editors').catch(()=>({editors:['dan','nguyen','shared']}));
+  const who = await modal({title:'Đồng bộ về kho của ai?',
+    body:`Tài nguyên editor vừa thêm trong "${n}" sẽ được nạp vào kho của người này.`,
+    actions:[...eds.editors.map(e=>({label:e, value:e})), {label:'Huỷ', value:null, style:'ghost'}]});
+  if(!who) return;
+  await busy(btn, 'Đang đồng bộ…', async () => {
+    try{
+      const r = await api(`/api/draft/${encodeURIComponent(n)}/sync?owner=${encodeURIComponent(who)}`,{method:'POST'});
+      toast(`Thêm ${r.added} (${r.new_in_lib} mới vào kho) · gỡ ${r.removed} · giữ ${r.kept}`);
+      guard('#draft', loadDrafts);
+    }catch(e){ toast(String(e), true); }
+  });
+}
+
+/* ══════════════════ TAB: ÂM THANH ══════════════════ */
+let CUR_DRAFT=null, LOCKED=new Set();
+async function loadAudio(){
+  const box = $('#audio'); box.innerHTML = skeleton(2);
+  const d = await api('/api/drafts');
+  if(!d.drafts.length){
+    box.innerHTML = '<h2>Cân bằng âm thanh</h2>'
+      + emptyBox('Chưa có draft nào để đo', 'Sang tab Dự án, tạo draft trước rồi quay lại đây.');
+    return;
+  }
+  LOCKED = new Set(d.drafts.filter(x=>x.locked).map(x=>x.name));
+  const want = CUR_DRAFT || PREF.get('audioDraft', '');
+  const cur = d.drafts.some(x=>x.name===want) ? want : d.drafts[0].name;
+  CUR_DRAFT = cur;
+  box.innerHTML = `
+    <h2>Cân bằng âm thanh</h2>
+    <div class="row">
+      <label class="fld"><span>Draft</span>
+        <select id="selD" style="min-width:260px">${d.drafts.map(x=>
+          `<option ${x.name===cur?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnMeasure">Đo lại</button></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn" id="btnApply">Cân bằng &amp; ghi vào draft</button></label>
+    </div>
+    <p class="muted small">Chuẩn EBU R128 · giọng nói −14 LUFS · SFX −16 · nhạc nền −30 · trần true peak −1 dBTP</p>
+    <div id="aOut"></div>`;
+  $('#btnMeasure').onclick = e => measure(e.currentTarget);
+  $('#selD').onchange = () => { PREF.set('audioDraft', $('#selD').value); lockUi(); measure(); };
+  $('#btnApply').onclick = async e => {
+    const n = $('#selD').value, btn = e.currentTarget;
+    if(!await confirmBox('Ghi âm lượng vào draft?', `Draft "${n}" sẽ được sửa (có backup .prebalance.bak).\nĐóng draft trong CapCut trước khi ghi.`)) return;
+    await busy(btn, 'Đang gửi…', async () => {
+      try{
+        const r = await api(`/api/draft/${encodeURIComponent(n)}/balance?dry=false`,{method:'POST'});
+        toast('Đang ghi âm lượng…');
+        JOB_DONE_CB[r.job] = () => { if(!$('#audio').hidden) measure(); };   // đo lại khi ghi XONG thật
+        startPolling();
+      }catch(e){ toast(String(e), true); }
+    });
+  };
+  lockUi(); measure();
+}
+/* Draft đang mở trong CapCut thì ghi vào là hỏng — chặn ngay ở nút, kèm lý do,
+   thay vì để job chạy rồi trả về lỗi .locked. */
+function lockUi(){
+  const n = $('#selD')?.value, b = $('#btnApply');
+  if(!b) return;
+  const bad = LOCKED.has(n);
+  b.disabled = bad;
+  b.title = bad ? 'Draft đang mở trong CapCut — đóng nó (về màn hình danh sách) rồi ghi' : '';
+}
+async function measure(btn){
+  const n = $('#selD').value; CUR_DRAFT = n; PREF.set('audioDraft', n);
+  $('#aOut').innerHTML = '<p class="muted small">Đang đo LUFS từng nguồn tiếng… (lần đầu hơi lâu, sau đó có cache)</p>';
+  await busy(btn, 'Đang đo…', () => measureRun(n));
+}
+async function measureRun(n){
+  try{
+    const d = await api(`/api/draft/${encodeURIComponent(n)}/audio`);
+    if(!d.rows.length){ $('#aOut').innerHTML = emptyBox('Draft này không có nguồn tiếng nào',
+      'Draft chưa có voice/SFX/nhạc — không có gì để cân bằng.'); return; }
+    const sfx = d.rows.filter(r=>r.role==='sfx').map(r=>r.lufs);
+    const spread = sfx.length>1 ? (Math.max(...sfx)-Math.min(...sfx)).toFixed(1) : null;
+    $('#aOut').innerHTML = `
+      ${spread?`<div class="cards"><div class="card"><div class="n ${spread>6?'bad':'good'}">${spread} dB</div>
+        <div class="l">chênh lệch giữa các SFX${spread>6?' — nên cân bằng':''}</div></div></div>`:''}
+      <div class="wrap"><table>
+        <thead><tr><th>Vai trò</th><th>Nguồn</th><th>Đo (LUFS)</th><th>Cần chỉnh</th><th>Volume</th></tr></thead>
+        <tbody>${d.rows.map(r=>`<tr>
+          <td><span class="tag ${r.role==='voice'?'ok':''}">${r.role}</span></td>
+          <td>${esc(r.file)}</td><td class="mono">${r.lufs}</td>
+          <td class="mono ${r.gain>0?'pos':(r.gain<0?'neg':'')}">${r.gain>0?'+':''}${r.gain} dB</td>
+          <td class="mono">${r.done?`<b>${r.volume}</b> <span class="tag ok">đã cân bằng</span>`
+                                    :`${r.cur} → <b>${r.volume}</b>`}</td></tr>`).join('')}</tbody></table></div>`;
+  }catch(e){ $('#aOut').innerHTML = `<p class="neg">${esc(e)}</p>`; }
+}
+
+/* ══════════════════ TAB: KHO TÀI NGUYÊN ══════════════════ */
+let LIB=null;
+async function loadLib(){
+  const box = $('#lib'); box.innerHTML = skeleton(5);
+  const [d, chk] = await Promise.all([api('/api/library'), api('/api/assets/check').catch(()=>({have:0,missing:[]}))]);
+  LIB = d;
+  box.innerHTML = `
+    <h2>Tổng quan kho</h2>
+    <div class="cards">
+      <div class="card"><div class="n">${d.total.n}</div><div class="l">tài nguyên</div></div>
+      <div class="card"><div class="n">${(d.total.sz/1e6).toFixed(1)} MB</div><div class="l">dung lượng</div></div>
+      ${d.by_owner.map(o=>`<div class="card"><div class="n">${o.n}</div>
+        <div class="l">của ${esc(o.owner||'—')} · ${o.uses||0} lượt dùng</div></div>`).join('')}
+      <div class="card"><div class="n ${chk.missing.length?'bad':'good'}">${chk.missing.length}</div>
+        <div class="l">thiếu trên máy này</div></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="btnRestore" ${chk.missing.length?'':'disabled title="Máy này đã đủ"'}>Cài tài nguyên thiếu vào CapCut</button>
+      <span class="muted small">${chk.missing.length?`máy này chưa có ${chk.missing.length} gói`:`đã đủ ${chk.have} gói`}</span>
+    </div>
+
+    <h2>Gu của editor — dùng nhiều nhất</h2>
+    <div class="row">
+      <input id="qLib" placeholder="lọc theo tên…" style="min-width:220px">
+      <select id="kLib"><option value="">tất cả loại</option>${d.by_kind.map(k=>`<option value="${esc(k.kind)}">${esc(k.kind)} (${k.n})</option>`).join('')}</select>
+    </div>
+    <div id="libTable"></div>`;
+  const br = $('#btnRestore');
+  if(br) br.onclick = () => busy(br, 'Đang cài…', async () => {
+    try{
+      const r = await api('/api/assets/restore',{method:'POST'});
+      toast('Đang cài tài nguyên vào CapCut');
+      JOB_DONE_CB[r.job] = () => { if(!$('#lib').hidden) guard('#lib', loadLib); };
+      startPolling();
+    }catch(e){ toast(String(e), true); }
+  });
+  $('#qLib').oninput = renderLib; $('#kLib').onchange = renderLib;
+  renderLib();
+}
+/* Chỉ xin ảnh cho loại THỰC SỰ có gói hình. Xin cho audio/font thì server trả 404,
+   vừa bẩn console vừa tốn request vô ích. */
+const THUMBABLE = new Set(['sticker','text_template','effect','transition','image','video']);
+const GLYPH = {audio:'♪', font:'Aa'};
+function thumbCell(a){
+  if(THUMBABLE.has(a.kind))
+    return `<img class="thumb" loading="lazy" src="/api/asset/${a.id}/thumb" alt="${esc(a.name||'')}"
+             onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb-none'}))">`;
+  return `<div class="thumb-none" style="display:grid;place-items:center;color:var(--color-faded-gray);
+           font-weight:700">${GLYPH[a.kind]||''}</div>`;
+}
+let LIB_LIMIT = 25;
+function renderLib(){
+  const q = ($('#qLib').value||'').toLowerCase(), k = $('#kLib').value;
+  const all = LIB.assets.filter(a => (!k || a.kind===k) && (!q || (a.name||'').toLowerCase().includes(q)));
+  const rows = all.slice(0, LIB_LIMIT);
+  $('#libTable').innerHTML = rows.length ? `<div class="wrap"><table>
+      <thead><tr><th></th><th>Loại</th><th>Tên</th><th>Của</th><th>Mức dùng</th><th>Lượt</th></tr></thead>
+      <tbody>${rows.map(a=>`<tr>
+        <td>${thumbCell(a)}</td>
+        <td><span class="tag">${esc(a.kind)}</span></td>
+        <td>${esc(a.name)||'<span class="muted">—</span>'}</td>
+        <td class="muted">${esc(a.owner||'')}</td>
+        <td><div class="bar"><i style="width:${Math.min(100,a.use_count*3)}%"></i></div></td>
+        <td class="mono"><b>${a.use_count}</b>${a.drop_count?` <span class="neg">−${a.drop_count}</span>`:''}</td>
+      </tr>`).join('')}</tbody></table></div>
+      <div class="row" style="margin-top:12px">
+        <span class="muted small">Hiện ${rows.length}/${all.length} tài nguyên${
+          all.length<LIB.assets.length?` (lọc từ ${LIB.assets.length})`:''}</span>
+        ${all.length>rows.length?`<button class="btn ghost sm" data-act="libAll">Xem tất cả ${all.length}</button>`:''}
+      </div>`
+    /* cắt bớt mà KHÔNG nói là nói dối: nhìn 25 dòng tưởng kho chỉ có ngần đó */
+    : emptyBox('Không có tài nguyên khớp bộ lọc', 'Xoá bớt chữ trong ô lọc hoặc chọn lại loại.');
+}
+ACTIONS.libAll = () => { LIB_LIMIT = 1e6; renderLib(); };
+
+/* ══════════════════ AGENT ══════════════════ */
+const SESSION = 'default';
+const SUGGEST = ['Tôi đang có những dự án nào?','Kho có gì của Nguyên?','Draft nào chưa chụp mốc?','Đo âm lượng draft mới nhất'];
+function bubble(role, text, tools){
+  const box = $('#chat');
+  if(tools && tools.length){
+    const t = document.createElement('div'); t.className='tools';
+    t.innerHTML = tools.map(x=>`<span class="tag info">${esc(x)}</span>`).join('');
+    box.appendChild(t);
+  }
+  const d = document.createElement('div');
+  d.className = 'bub ' + (role==='user'?'u':'a');
+  d.innerHTML = esc(text).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+  box.appendChild(d); box.scrollTop = box.scrollHeight;
+  return d;
+}
+async function loadChat(){
+  $('#chat').innerHTML = '';
+  $('#chips').innerHTML = SUGGEST.map(s=>`<button class="chip" data-act="ask">${esc(s)}</button>`).join('');
+  /* Thiếu key thì chat trả về lỗi tiếng Anh của SDK — nói trước bằng tiếng Việt
+     và khoá ô nhập, hơn là để người dùng gõ xong mới ăn một cục lỗi khó hiểu. */
+  const ed = await api('/api/editors').catch(()=>({keys:{gemini:true}}));
+  const ok = !!ed.keys.gemini;
+  $('#msg').disabled = !ok; $('#btnSend').disabled = !ok;
+  $('#chips').hidden = !ok;
+  if(!ok){
+    $('#msg').placeholder = 'Chế độ Agent cần GEMINI_API_KEY';
+    bubble('model','Chưa có GEMINI_API_KEY nên chế độ Agent chưa dùng được.\n'
+      + 'Đóng app, mở lại bằng: set GEMINI_API_KEY=... & python app.py\n'
+      + 'Trong lúc chờ, chế độ Thủ công vẫn chạy bình thường (trừ nút Phân tích).');
+    return;
+  }
+  const d = await api('/api/agent/history?session='+SESSION).catch(()=>({messages:[]}));
+  if(!d.messages.length){
+    bubble('model','Chào bạn. Tôi làm được: phân tích record mới, dựng draft theo gu editor, xem kho tài nguyên, so sánh editor đã sửa gì, cân bằng âm thanh. Cần gì cứ nói.');
+  }
+  d.messages.forEach(m=>bubble(m.role==='user'?'user':'model', m.content));
+}
+function ask(t){ $('#msg').value = t; send(); }
+ACTIONS.ask = (d, el) => ask(el.textContent);
+async function send(){
+  const inp = $('#msg'), text = inp.value.trim();
+  if(!text) return;
+  inp.value=''; bubble('user', text);
+  /* Agent gọi Gemini + tool, có lượt mất 20-30 giây. Ba chấm nhấp nháy không nói
+     được là "đang chạy" hay "treo" -> đếm giây để người dùng còn biết mà chờ. */
+  const typing = document.createElement('div');
+  typing.className='bub a'; typing.innerHTML='<span class="dots"><span></span><span></span><span></span></span>';
+  $('#chat').appendChild(typing); $('#chat').scrollTop = $('#chat').scrollHeight;
+  const t0 = Date.now();
+  const tick = setInterval(()=>{
+    const s = Math.round((Date.now()-t0)/1000);
+    if(s >= 3) typing.innerHTML = `<span class="dots"><span></span><span></span><span></span></span>
+      <span class="muted small" style="margin-left:8px">đang xử lý… ${s}s</span>`;
+  }, 1000);
+  const btn = $('#btnSend'); btn.disabled = true;
+  try{
+    const r = await api(`/api/agent/chat?session=${SESSION}&message=${encodeURIComponent(text)}`,{method:'POST'});
+    bubble('model', r.reply, (r.steps||[]).map(s=>s.tool));
+    if((r.steps||[]).some(s=>s.ket_qua && s.ket_qua.da_khoi_dong)){
+      toast('Đã khởi động việc chạy nền — theo dõi ở chỉ báo tiến trình trên đầu trang');
+      askNotify(); startPolling();
+    }
+  }catch(e){
+    bubble('model','Lỗi: '+e);
+    inp.value = text;          // trả lại câu vừa gõ, khỏi gõ lại từ đầu
+  }
+  finally{ clearInterval(tick); typing.remove(); btn.disabled = false; inp.focus(); }
+}
+$('#btnSend').onclick = send;
+$('#msg').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }});
+$('#btnReset').onclick = async ()=>{
+  if(!await confirmBox('Xoá toàn bộ hội thoại?','Agent sẽ quên hết ngữ cảnh đã trao đổi.')) return;
+  await api('/api/agent/reset?session='+SESSION,{method:'POST'}); loadChat(); toast('Đã xoá hội thoại');
+};
+
+/* theo dõi job ngay từ đầu, không đợi người dùng vào tab Dự án.
+   Nhịp chậm này cũng là mạch đập kiểm tra server còn sống (banner mất kết nối). */
+pollJobs(); setInterval(()=>{ if(!JOB_TIMER) pollJobs(); }, 5000);
+setMode(PREF.get('agent', false));      // mở lại đúng chế độ + tab của lần trước
+</script>
+</body>
+</html>

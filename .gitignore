@@ -1,0 +1,12 @@
+# Key nằm nguyên văn trong .env — không bao giờ đưa lên git
+.env
+
+__pycache__/
+
+# Dữ liệu sinh ra / trạng thái của máy — không đưa lên git
+shorts/work/
+renders/
+snapshots/
+assets/user/
+library.db
+*.bak

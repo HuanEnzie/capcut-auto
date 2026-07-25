@@ -1,0 +1,13 @@
+{
+  "folders": [
+    { "name": "capcut-auto (code)", "path": "." },
+    { "name": "CapCut drafts (C:)", "path": "C:\\Users\\Acer\\AppData\\Local\\CapCut\\User Data\\Projects\\com.lveditor.draft" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/__pycache__": true,
+      "assets/**/*.mp3": false
+    },
+    "python.analysis.extraPaths": ["./shorts"]
+  }
+}

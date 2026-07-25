@@ -1,0 +1,23 @@
+# Profile: Họp / hội thảo. Đổi tiêu chí = đổi file này, KHÔNG sửa code.
+name: "Họp / hội thảo"
+language: "Tiếng Việt"
+target_duration: [60, 180]        # độ dài mong muốn mỗi short (giây)
+standalone_required: true          # đoạn phải hiểu được khi tách riêng
+min_total_score: 5.0               # dưới ngưỡng này thì loại
+
+criteria:                          # LLM chấm từng tiêu chí 1-10; code nhân trọng số
+  decision:
+    weight: 3
+    desc: "Chốt phương án, giao việc, ra quyết định, kết luận cuộc họp"
+  explanation:
+    weight: 2
+    desc: "Giải thích cách làm, chia sẻ kinh nghiệm/insight hữu ích khi tách riêng"
+  debate:
+    weight: 2
+    desc: "Tranh luận, quan điểm trái chiều, câu hỏi hóc búa"
+  data:
+    weight: 1
+    desc: "Nêu số liệu, kết quả, mốc thời gian, con số cụ thể"
+  hook:
+    weight: 1
+    desc: "Có câu mở đầu gây tò mò/ấn tượng, dễ giữ chân người xem"
