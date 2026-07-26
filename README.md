@@ -89,6 +89,7 @@ python audio_balance.py 1107_short04_v7 --dry       # xem trước
 | `agent.py` | Chế độ Agent: vòng lặp tool + trí nhớ hội thoại |
 | `shorts/gemini_util.py` | Gọi Gemini có retry + xoay tua model |
 | **`docs/WORKFLOW.md`** | **Toàn bộ workflow + cơ chế vận hành (đọc cái này trước)** |
+| **`docs/V1.md`** | **Chốt phạm vi v1 + tiêu chí chấm điểm phát hành** |
 | **`docs/ROADMAP.md`** | **Hướng phát triển: tự học, dashboard tài nguyên, agent dài hạn, tách khỏi CapCut** |
 | `docs/DESIGN.md` | Style reference (nguồn chân lý về giao diện) |
 | `docs/UI.md` | Quy tắc thiết kế giao diện — đọc trước khi sửa `ui.html` |
