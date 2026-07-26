@@ -8,7 +8,7 @@ Manifest: library.db (sqlite trong stdlib, không cần cài thêm).
 
   python assetlib.py --stats
 """
-import argparse, hashlib, os, shutil, sqlite3, time
+import argparse, hashlib, os, re, shutil, sqlite3, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -115,6 +115,26 @@ def find_capcut(refresh: bool = False) -> dict:
     out["cache"] = (out["home"] or Path()) / "User Data" / "Cache"
     find_capcut._cache = out
     return out
+
+
+def sfx_kho(extra_dir: str = "") -> dict:
+    """Tên hiển thị -> đường dẫn file SFX. Gộp thư mục chỉ định + KHO đã học.
+
+    Trước đây hai chỗ hardcode thẳng 'E:/E Download/meme' (máy dev). Máy khác không
+    có thư mục đó thì danh sách SFX rỗng -> AI không chọn được gì -> draft dựng ra
+    KHÔNG CÓ SFX NÀO mà chẳng báo lỗi. Hỏng im lặng, tệ hơn là crash.
+
+    Thứ tự nguồn: tham số -> CAPCUT_SFX_DIR -> kho assets/**/sfx (đi theo app).
+    """
+    ra = {}
+    for f in sorted(ASSETS.rglob("sfx/*.mp3")):        # kho học từ draft, đi theo app
+        ten = re.sub(r"^[0-9a-f]{8,16}_", "", f.name)  # bỏ tiền tố băm khi lưu kho
+        ra.setdefault(ten, f)
+    for d in (extra_dir, os.environ.get("CAPCUT_SFX_DIR", "")):
+        if d and Path(d).is_dir():
+            for f in sorted(Path(d).glob("*.mp3")):
+                ra[f.name] = f                          # thư mục chỉ định được ưu tiên
+    return ra
 
 
 def draft_root() -> Path:

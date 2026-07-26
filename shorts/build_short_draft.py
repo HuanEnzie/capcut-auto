@@ -428,13 +428,18 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
     # SFX: AI chọn từ kho, đặt đúng giây; bin-pack vào ít track nhất (không chồng)
     atrack_src = next(t for t in dt["tracks"] if t["type"] == "audio")
     _, amat_src = cb.find_mat(dt, atrack_src["segments"][0]["material_id"])
-    sfx_dir = Path(sfx_path)
+    # SFX lấy từ KHO trước, thư mục chỉ định chỉ là nguồn phụ — máy khác không có
+    # thư mục của máy dev thì vẫn phải ra được tiếng động.
+    kho_sfx = assetlib.sfx_kho(sfx_path or "")
+    if not kho_sfx:
+        print("  [sfx] ⚠️ không có SFX nào để chèn (kho rỗng, không thấy thư mục SFX)")
     sfx_segs = []
     for s in sorted((enr.get("sfx", []) if enr else []), key=lambda x: x["sec"]):
-        f = sfx_dir / s["file"]
+        f = kho_sfx.get(s["file"]) or (Path(sfx_path) / s["file"] if sfx_path else None)
         o = src_to_out(s["sec"])
-        if not f.exists() or o is None:
+        if not f or not Path(f).exists() or o is None:
             continue
+        f = Path(f)
         st_us = int(o * 1_000_000)
         sdur = int(probe_dur(f) * 1_000_000)
         use = min(sdur, dur_us - st_us)

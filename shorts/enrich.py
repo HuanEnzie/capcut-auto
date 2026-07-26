@@ -12,7 +12,19 @@ import argparse, json, os, sys
 from pathlib import Path
 from pydantic import BaseModel
 
+# Thư mục SFX PHỤ của máy dev. Nguồn chính là kho `assets/**/sfx` đi theo app —
+# hardcode một mình đường dẫn này thì máy khác ra draft KHÔNG CÓ SFX mà không báo gì.
 SFX_DIR = "E:/E Download/meme"
+
+
+def _kho_sfx():
+    try:
+        import assetlib
+        return assetlib.sfx_kho(SFX_DIR)
+    except ImportError:                       # chạy thẳng trong shorts/ không thấy assetlib
+        from pathlib import Path as _P
+        d = _P(SFX_DIR)
+        return {f.name: f for f in d.glob("*.mp3")} if d.is_dir() else {}
 
 
 class Hook(BaseModel):
@@ -70,7 +82,10 @@ def enrich_topic(work: Path, idx: int, model: str) -> dict:
     fixed = json.loads((work / "captions_fixed.json").read_text(encoding="utf-8")) if (work / "captions_fixed.json").exists() else {}
     topic = topics["topics"][idx - 1]
     lines = topic_lines(topic, tr, fixed)
-    sfx_files = [p.name for p in Path(SFX_DIR).glob("*.mp3")] if Path(SFX_DIR).exists() else []
+    sfx_files = list(_kho_sfx())
+    if not sfx_files:
+        print("  [enrich] ⚠️ KHÔNG có SFX nào (kho rỗng và không thấy thư mục SFX) "
+              "-> draft sẽ không có tiếng động. Đồng bộ vài draft về kho, hoặc đặt CAPCUT_SFX_DIR.")
 
     body = f"CHỦ ĐỀ SHORT: {topic.get('title','')}\n"
     body += f"TÓM TẮT: {topic.get('summary','')}\n"
