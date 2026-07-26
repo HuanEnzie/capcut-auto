@@ -11,21 +11,25 @@ Hai hệ thống:
 
 # App: kho tài nguyên học theo gu editor + cân bằng âm thanh
 
+### Cài trên máy mới — hai bước
+
+1. Bấm đúp **`cai_dat.bat`** — tự kiểm tra Python/ffmpeg, tạo môi trường riêng `.venv`,
+   cài thư viện, **tạo sẵn thư mục dữ liệu**, **dò CapCut trên máy**, chạy smoke test.
+2. Bấm đúp **`chay.bat`** — mở app ở http://127.0.0.1:8765.
+
+Lần đầu mở app: vào mục **Cài đặt** ở thanh bên, dán API key rồi bấm *Lưu và áp dụng* —
+**không cần khởi động lại**, không phải sờ tới file nào. Key lưu trong `.env` trên máy bạn,
+app không gửi đi đâu.
+
+Cần gì trước khi cài: **Python 3.11** (nhớ tích *Add python.exe to PATH*) và
+**ffmpeg** trong PATH. Thiếu ffmpeg thì app vẫn mở nhưng không dựng được draft —
+`cai_dat.bat` sẽ báo.
+
+Chạy tay (cách cũ vẫn dùng được):
 ```bash
-cd "E:\Source Code\capcut-auto"
 python app.py            # mở http://127.0.0.1:8765
+python -m pytest -q tests
 ```
-Cài lần đầu trên máy mới:
-```bash
-pip install fastapi "uvicorn[standard]" watchdog python-multipart faster-whisper google-genai pydantic
-```
-Rồi chép `.env.example` thành `.env` và điền 2 key:
-```
-GEMINI_API_KEY=...
-PEXELS_API_KEY=...
-```
-App tự nạp `.env` khi khởi động (`assetlib.load_env`), khỏi `set` biến môi trường mỗi lần.
-Biến đã có sẵn trong môi trường vẫn được ưu tiên hơn file. **`.env` không đưa lên git.**
 
 ### Bố cục
 Thanh bên trái: 5 khu vực làm việc + **Agent chat**. Thu gọn còn thanh icon bằng nút mũi

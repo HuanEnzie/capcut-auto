@@ -665,7 +665,12 @@ def dung_lich_su(session: str, ngan_sach: int = NGAN_SACH_LICH_SU) -> list:
             else _stub_tool(r["content"], r["ts"])
         gia = uoc_token(noi_dung)
         if tong + gia > ngan_sach and not moi:
-            break                                  # hết ngân sách, dừng ở đây
+            # Hết ngân sách thì HY SINH DỮ LIỆU TOOL trước rồi đi tiếp — nó gọi lại
+            # là có. Trước đây break thẳng, cuốn theo cả lời người dùng ở phía trước
+            # (test đo được: 15 câu chỉ còn 11). Lời người dùng không tái tạo được.
+            if r["role"] == "tool":
+                continue
+            break                                  # tới cả lời người dùng cũng tràn
         ra.append({"role": r["role"], "content": noi_dung})
         tong += gia
     ra.reverse()

@@ -31,6 +31,8 @@ ROOT = assetlib.ROOT
 DRAFT_ROOT = draft_scan.DRAFT_ROOT
 WORK = ROOT / "shorts" / "work"
 
+assetlib.khoi_tao(im_lang=False)      # máy mới cài: tạo sẵn thư mục dữ liệu
+
 app = FastAPI(title="CapCut Auto Editor")
 
 # Font đóng gói kèm app. KHÔNG dùng Google Fonts: CSS của nó chặn render, máy cài
@@ -518,6 +520,69 @@ def api_overview():
             "drafts": len(drafts), "todo": todo, "lib": lib, "owners": owners,
             "capcut": {k: (str(v) if k in ("draft", "cache", "home") else v)
                        for k, v in assetlib.find_capcut().items()}}
+
+
+# ───────── CÀI ĐẶT: nhập API key trong app, không sửa .env bằng tay ─────────
+# Khai báo dạng DANH SÁCH để sau này thêm nhà cung cấp khác chỉ là thêm một dòng,
+# không phải sửa cả backend lẫn giao diện.
+NHA_CUNG_CAP = [
+    {"key": "GEMINI_API_KEY", "ten": "Google Gemini", "bat_buoc": True,
+     "dung_de": "Trích chủ đề từ record, chọn hook/SFX/B-roll, sửa caption, chế độ Agent",
+     "lay_o": "https://aistudio.google.com/apikey"},
+    {"key": "PEXELS_API_KEY", "ten": "Pexels", "bat_buoc": False,
+     "dung_de": "Tải video stock làm B-roll. Không có thì draft vẫn dựng, chỉ thiếu B-roll",
+     "lay_o": "https://www.pexels.com/api/"},
+    {"key": "GEMINI_API_KEYS", "ten": "Gemini — nhiều key (tuỳ chọn)", "bat_buoc": False,
+     "dung_de": "Xoay key khi cạn hạn ngạch. CHỈ có tác dụng nếu các key thuộc PROJECT "
+                "khác nhau — Google tính hạn ngạch theo project",
+     "lay_o": ""},
+]
+
+
+def _che(v: str) -> str:
+    """Che key khi trả về giao diện — không bao giờ gửi nguyên văn ra ngoài."""
+    return f"{v[:6]}…{v[-4:]}" if v and len(v) > 12 else ("đã có" if v else "")
+
+
+@app.get("/api/settings")
+def api_settings():
+    return {"nha_cung_cap": [dict(n, da_co=bool(os.environ.get(n["key"])),
+                                  che=_che(os.environ.get(n["key"], "")))
+                             for n in NHA_CUNG_CAP],
+            "file_env": str(ROOT / ".env")}
+
+
+class SettingsReq(BaseModel):
+    gia_tri: dict = {}          # {"GEMINI_API_KEY": "...", ...}
+
+
+@app.post("/api/settings")
+def api_settings_save(req: SettingsReq):
+    """Ghi .env và áp dụng NGAY, không bắt khởi động lại."""
+    hop_le = {n["key"] for n in NHA_CUNG_CAP}
+    moi = {k: v.strip() for k, v in (req.gia_tri or {}).items() if k in hop_le and v.strip()}
+    if not moi:
+        raise HTTPException(400, "không có giá trị nào để lưu")
+
+    f = ROOT / ".env"
+    cu = {}
+    if f.exists():
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.strip().startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                cu[k.strip()] = v.strip()
+    cu.update(moi)
+    f.write_text("# Key do app ghi. KHÔNG đưa file này lên git / gửi cho người khác.\n"
+                 + "".join(f"{k}={v}\n" for k, v in cu.items()), encoding="utf-8")
+
+    for k, v in moi.items():        # áp dụng ngay cho tiến trình đang chạy
+        os.environ[k] = v
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "shorts"))
+    import gemini_util
+    gemini_util._CLIENTS.clear()    # client cũ giữ key cũ -> phải bỏ
+    gemini_util._NGHI.clear()
+    return {"da_luu": sorted(moi), "ghi_chu": "áp dụng ngay, không cần khởi động lại"}
 
 
 @app.get("/api/editors")

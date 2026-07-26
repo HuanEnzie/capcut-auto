@@ -11,3 +11,4 @@ assets/user/
 library.db
 *.bak
 quarantine/
+.venv/

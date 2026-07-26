@@ -117,6 +117,26 @@ def find_capcut(refresh: bool = False) -> dict:
     return out
 
 
+# Thư mục dữ liệu app tự tạo lần chạy đầu. Máy mới cài không có sẵn cái nào, mà
+# code cũ chỗ thì mkdir chỗ thì không -> lỗi rơi ra giữa chừng lúc đang chạy việc
+# nặng. Tạo hết ngay từ đầu, một chỗ.
+THU_MUC_DU_LIEU = ("assets/user", "assets/default", "snapshots", "shorts/work",
+                   "renders", "quarantine")
+
+
+def khoi_tao(im_lang: bool = True) -> list:
+    """Tạo thư mục dữ liệu còn thiếu. Trả danh sách vừa tạo."""
+    tao = []
+    for r in THU_MUC_DU_LIEU:
+        p = ROOT / r
+        if not p.exists():
+            p.mkdir(parents=True, exist_ok=True)
+            tao.append(r)
+    if tao and not im_lang:
+        print("Đã tạo thư mục dữ liệu:", ", ".join(tao))
+    return tao
+
+
 def sfx_kho(extra_dir: str = "") -> dict:
     """Tên hiển thị -> đường dẫn file SFX. Gộp thư mục chỉ định + KHO đã học.
 

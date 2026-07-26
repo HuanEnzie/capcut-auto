@@ -356,6 +356,12 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
         <svg viewBox="0 0 24 24"><path d="M21 8v12H3V8"/><rect x="1" y="3" width="22" height="5"/><path d="M10 12h4"/></svg><span>Kho tài nguyên</span></button>
     </nav>
 
+    <div class="grp">Hệ thống</div>
+    <nav>
+      <button data-t="setup" role="tab" aria-controls="setup" aria-selected="false">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg><span>Cài đặt</span></button>
+    </nav>
+
     <div class="grp">Trợ lý</div>
     <nav>
       <button id="mAgent">
@@ -384,6 +390,7 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
     <section id="draft" role="tabpanel" hidden></section>
     <section id="audio" role="tabpanel" hidden></section>
     <section id="lib" role="tabpanel" hidden></section>
+    <section id="setup" role="tabpanel" hidden></section>
     <section id="agent" hidden>
       <div id="chat"></div>
       <div class="row" style="margin-top:12px">
@@ -544,8 +551,10 @@ const emptyBox = (title, hint) => `<div class="empty"><b>${esc(title)}</b>${esc(
 /* ---------- chuyển chế độ / tab ----------
    Tab và chế độ được NHỚ: người dùng ở tab Âm thanh cả buổi, mỗi lần Ctrl+F5
    lại bị ném về tab Dự án là mất mạch việc. */
-const SECTS = ['over','proj','draft','audio','lib'];
-const LOADERS = {over:loadOver, proj:loadProj, draft:loadDrafts, audio:loadAudio, lib:loadLib};
+const SECTS = ['over','proj','draft','audio','lib','setup'];
+const LOADERS = {over:loadOver, proj:loadProj, draft:loadDrafts, audio:loadAudio,
+                 lib:loadLib, setup:loadSetup};
+const NUT_TAB = () => document.querySelectorAll('.side button[data-t]');
 /* Tiêu đề trang nằm ở một chỗ: sidebar chỉ còn nhãn ngắn, câu giải thích "khu vực
    này để làm gì" chuyển lên đầu trang — người mới mở app đọc là hiểu ngay. */
 const PAGES = {
@@ -554,6 +563,7 @@ const PAGES = {
   draft:['Draft', 'Chụp mốc → editor sửa trong CapCut → đồng bộ về kho để app học gu.'],
   audio:['Âm thanh', 'Đo LUFS từng nguồn rồi cân bằng theo chuẩn EBU R128.'],
   lib:  ['Kho tài nguyên', 'Gu từng editor và cài tài nguyên còn thiếu vào CapCut.'],
+  setup:['Cài đặt', 'API key để app chạy được. Lưu vào máy bạn, áp dụng ngay, không cần khởi động lại.'],
   agent:['Agent chat', 'Ra lệnh bằng tiếng Việt — agent tự chọn việc, tự hỏi khi thiếu thông tin, và nhớ ngữ cảnh.'],
 };
 function setPage(k){ $('#pgTitle').textContent = PAGES[k][0]; $('#pgSub').textContent = PAGES[k][1]; }
@@ -561,7 +571,7 @@ let TAB = PREF.get('tab', 'over');
 function showTab(t){
   if(!LOADERS[t]) t = 'over';
   TAB = t; PREF.set('tab', t); PREF.set('agent', false);
-  $('#navbar').querySelectorAll('button').forEach(x => {
+  NUT_TAB().forEach(x => {                      // gồm cả mục Cài đặt ở nhóm Hệ thống
     const on = x.dataset.t === t;
     x.classList.toggle('on', on); x.setAttribute('aria-selected', on);
   });
@@ -574,13 +584,11 @@ function showTab(t){
   setPage(t);
   guard('#'+t, LOADERS[t]);
 }
-$('#navbar').querySelectorAll('button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+NUT_TAB().forEach(b => b.onclick = () => showTab(b.dataset.t));
 function setMode(agentMode){
   if(!agentMode) return showTab(TAB);
   PREF.set('agent', true);
-  $('#navbar').querySelectorAll('button').forEach(x => {
-    x.classList.remove('on'); x.setAttribute('aria-selected', false);
-  });
+  NUT_TAB().forEach(x => { x.classList.remove('on'); x.setAttribute('aria-selected', false); });
   $('#mAgent').classList.add('on');
   $('#btnNewChat').hidden = false;
   $('#mManual').style.display = '';
@@ -597,6 +605,45 @@ ACTIONS.retry = d => RETRY[d.sel] && RETRY[d.sel]();
 function setRail(on){ $('#app').classList.toggle('rail', on); PREF.set('rail', on); }
 $('#railBtn').onclick = () => setRail(!$('#app').classList.contains('rail'));
 setRail(PREF.get('rail', false));
+
+/* ══════════════════ TAB: CÀI ĐẶT ══════════════════
+   Người dùng không sửa .env bằng tay. Nhập ở đây, app ghi file và áp dụng NGAY.
+   Key đã lưu chỉ hiện dạng che — không bao giờ trả nguyên văn về giao diện. */
+async function loadSetup(){
+  const box = $('#setup'); box.innerHTML = skeleton(2);
+  const d = await api('/api/settings');
+  box.innerHTML = `
+    <h2>API key</h2>
+    <p class="muted small">Lưu vào <span class="mono">${esc(d.file_env)}</span> trên máy bạn.
+      App không gửi key đi đâu cả. Sau này thêm mô hình khác thì chỉ hiện thêm ô ở đây.</p>
+    ${d.nha_cung_cap.map(n=>`
+      <div class="card" style="margin-bottom:12px">
+        <div class="row" style="margin:0 0 8px">
+          <b>${esc(n.ten)}</b>
+          ${n.bat_buoc?'<span class="tag bad">bắt buộc</span>':'<span class="tag">tuỳ chọn</span>'}
+          ${n.da_co?`<span class="tag ok" title="đã lưu">${esc(n.che)}</span>`:'<span class="tag">chưa có</span>'}
+        </div>
+        <div class="muted small" style="margin-bottom:8px">${esc(n.dung_de)}</div>
+        <div class="row" style="margin:0">
+          <input type="text" class="kvNhap" data-k="${esc(n.key)}" style="flex:1;min-width:280px"
+                 placeholder="${n.da_co?'dán key mới để thay':'dán key vào đây'}" autocomplete="off">
+          ${n.lay_o?`<a class="link small" href="${esc(n.lay_o)}" target="_blank" rel="noreferrer">lấy key ↗</a>`:''}
+        </div>
+      </div>`).join('')}
+    <div class="row"><button class="btn" id="btnLuuKey">Lưu và áp dụng</button>
+      <span class="muted small" id="luuKq"></span></div>`;
+  $('#btnLuuKey').onclick = e => busy(e.currentTarget, 'Đang lưu…', async () => {
+    const gia_tri = {};
+    box.querySelectorAll('.kvNhap').forEach(i => { if(i.value.trim()) gia_tri[i.dataset.k] = i.value.trim(); });
+    if(!Object.keys(gia_tri).length) return toast('Chưa nhập key nào', true);
+    try{
+      const r = await api('/api/settings', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify({gia_tri})});
+      toast(`Đã lưu ${r.da_luu.length} key — dùng được ngay`);
+      guard('#setup', loadSetup);
+    }catch(e){ toast(String(e), true); }
+  });
+}
 
 /* ══════════════════ TAB: TỔNG QUAN ══════════════════
    Trả lời hai câu CapCut không trả lời được: "máy tôi đang có sẵn những gì?" và
