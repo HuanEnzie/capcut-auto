@@ -40,8 +40,10 @@ set PY=.venv\Scripts\python.exe
 
 echo [..] Cai thu vien (lan dau mat vai phut)
 %PY% -m pip install --upgrade pip --quiet
+REM pytest nam trong danh sach vi buoc kiem tra ben duoi CAN no — thieu thi
+REM smoke test im lang bi bo qua, dung luc can no nhat (may moi cai).
 %PY% -m pip install --quiet fastapi "uvicorn[standard]" python-multipart pydantic ^
-  google-genai faster-whisper pyyaml watchdog
+  google-genai faster-whisper pyyaml watchdog pytest
 if errorlevel 1 (echo [X] Cai thu vien that bai & pause & exit /b 1)
 echo [OK] Thu vien
 
