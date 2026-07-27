@@ -332,6 +332,41 @@ def test_nghi_theo_tung_model_khong_theo_ca_key(monkeypatch):
     g._NGHI.clear()
 
 
+def test_cham_hinh_phat_hien_doan_dung_yen():
+    """Ba short đầu tiên đều 'đúng' theo mọi chỉ số đang đo (dangling 0, caption đúng
+    nhịp, file không thiếu) nhưng xem thì không dùng được: nguồn là bản ghi chia sẻ
+    MÀN HÌNH. Đo 27/07 trên record thật: 46% thời lượng hình đứng yên, và đúng hai chủ
+    đề người dùng chê nhất là hai cái tĩnh 94% và 89%."""
+    import hinh_anh
+    hinh = {"duration_sec": 100.0, "dung_yen": [[10.0, 20.0], [50.0, 5.0]]}
+
+    # chủ đề rơi trọn vào đoạn đứng yên -> phạt kịch khung
+    c = hinh_anh.cham(hinh, [(10.0, 30.0)])
+    assert c["ty_le_tinh"] > 0.9 and c["he_so"] == 0.5
+
+    # chủ đề ở vùng có chuyển động -> không phạt
+    c = hinh_anh.cham(hinh, [(60.0, 90.0)])
+    assert c["ty_le_tinh"] == 0.0 and c["he_so"] == 1.0
+
+    # hệ số không bao giờ về 0: đoạn tĩnh vẫn cứu được bằng B-roll hoặc chữ to
+    assert hinh_anh.cham({"dung_yen": [[0.0, 999.0]]}, [(0.0, 100.0)])["he_so"] >= 0.5
+
+    # nguồn tĩnh nhiều thì phải CẢNH BÁO, đừng để người dùng dựng xong mới biết
+    assert "ĐỨNG YÊN" in hinh_anh.nhan_xet_nguon({"ty_le_tinh": 0.46})
+    assert hinh_anh.nhan_xet_nguon({"ty_le_tinh": 0.02}) == ""
+
+
+def test_cong_tac_lop_co_tac_dung_len_build():
+    """Bug đã gặp: giao diện có 7 công tắc lớp, lưu vào DB đầy đủ, mà build KHÔNG ĐỌC
+    — bật tắt xong chẳng có gì xảy ra. Hỏng im lặng đúng kiểu luật cứng #2 cấm."""
+    import inspect
+    import build_short_draft as bsd
+    src = inspect.getsource(bsd.build)
+    assert "cau_hinh" in inspect.signature(bsd.build).parameters, "build phải nhận cấu hình"
+    for lop in ("caption", "hook", "sfx", "emoji", "broll", "card_chot"):
+        assert f'lop.get("{lop}"' in src, f"lớp '{lop}' chưa được nối vào build"
+
+
 def test_hook_khong_phat_lai_hai_lan():
     """Bug đã gặp 27/07: hook được GHÉP THÊM lên đầu nhưng KHÔNG trừ khỏi thân, nên
     cùng một câu phát HAI LẦN. Đo bằng tương quan chéo trên file đã xuất: t2 trùng

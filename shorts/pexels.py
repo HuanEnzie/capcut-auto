@@ -23,31 +23,43 @@ def _download(link, dest: Path):
             f.write(chunk)
 
 
-def fetch_broll(query: str, out_path: Path, dur_sec: float, w=1080, h=1920):
+def fetch_broll(query: str, out_path: Path, dur_sec: float, w=1080, h=1920,
+                tranh_id=None):
     """Tìm 1 video Pexels theo query -> tải -> reframe {w}x{h} cover, cắt dur_sec (không tiếng).
-    Trả out_path hoặc None."""
+
+    `tranh_id`: tập id Pexels ĐÃ DÙNG trong dự án — bỏ qua để không lặp hình giữa các
+    short. Đã gặp thật 27/07: cùng một khuôn mặt người đàn ông xuất hiện ở cả short 1
+    lẫn short 3, xem hai cái liền là nhận ra ngay.
+
+    Trả (out_path, id_pexels) hoặc (None, None).
+    """
     key = os.environ.get("PEXELS_API_KEY")
     if not key:
-        print("  [pexels] thiếu PEXELS_API_KEY"); return None
+        print("  [pexels] thiếu PEXELS_API_KEY"); return None, None
+    tranh = set(tranh_id or ())
     try:
-        for params in ({"query": query, "per_page": 5, "orientation": "portrait"},
-                       {"query": query, "per_page": 5}):
+        # per_page rộng hơn để còn cái mà né khi đã dùng nhiều
+        for params in ({"query": query, "per_page": 15, "orientation": "portrait"},
+                       {"query": query, "per_page": 15}):
             data = _get_json(API + "?" + urllib.parse.urlencode(params), key)
             vids = data.get("videos", [])
             if vids:
                 break
         if not vids:
-            print(f"  [pexels] không thấy: {query}"); return None
-        link = None
+            print(f"  [pexels] không thấy: {query}"); return None, None
+        link, vid = None, None
         for v in vids:
+            if v.get("id") in tranh:
+                continue
             files = v.get("video_files", [])
             pick = (next((f for f in sorted(files, key=lambda f: f.get("height") or 0)
                           if (f.get("height") or 0) >= 1080), None)
                     or (max(files, key=lambda f: f.get("height") or 0) if files else None))
             if pick and pick.get("link"):
-                link = pick["link"]; break
+                link, vid = pick["link"], v.get("id"); break
         if not link:
-            return None
+            print(f"  [pexels] '{query}': mọi kết quả đều đã dùng rồi -> bỏ qua")
+            return None, None
         raw = out_path.with_suffix(".raw.mp4")
         _download(link, raw)
         subprocess.run(["ffmpeg", "-y", "-t", f"{dur_sec:.2f}", "-i", str(raw),
@@ -58,6 +70,6 @@ def fetch_broll(query: str, out_path: Path, dur_sec: float, w=1080, h=1920):
             raw.unlink()
         except OSError:
             pass
-        return out_path
+        return out_path, vid
     except Exception as e:
-        print(f"  [pexels] lỗi '{query}': {e}"); return None
+        print(f"  [pexels] lỗi '{query}': {e}"); return None, None

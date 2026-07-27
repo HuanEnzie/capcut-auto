@@ -292,6 +292,25 @@ def extract_topics(work: Path, profile_path: str, model: str, dry: bool):
     topics = gop_chu_de(tho)
     if truoc_gop != len(topics):
         print(f"\nGộp trùng ở vùng chồng lấn: {truoc_gop} -> {len(topics)} chủ đề")
+    # HỆ SỐ HÌNH: chấm điểm chỉ theo lời thì bỏ sót hoàn toàn chuyện "có gì để NHÌN".
+    # Đo 27/07: record này 46% thời lượng hình đứng yên (bản ghi chia sẻ màn hình), và
+    # đúng hai chủ đề người dùng chê nhất là hai cái tĩnh 94% và 89%.
+    # Việc này phải do CODE tính, KHÔNG để LLM chấm: nó chỉ đọc transcript, không nhìn
+    # được video nên sẽ bịa — đúng cái bẫy tiêu chí `data` đang mắc (điểm TB 2,2).
+    try:
+        import hinh_anh
+        hinh = hinh_anh.quet(transcript["source"], work, im_lang=True)
+    except Exception as e:
+        print(f"  (bỏ qua chấm hình: {str(e)[:60]})")
+        hinh = None
+    if hinh and hinh.get("dung_yen"):
+        for t in topics:
+            kh = [(s["start_sec"], s["end_sec"]) for s in t["segments"]]
+            c = hinh_anh.cham(hinh, kh)
+            t["hinh"] = c
+            t["diem_loi"] = t["total_score"]              # giữ điểm nội dung gốc
+            t["total_score"] = round(t["total_score"] * c["he_so"], 2)
+
     topics.sort(key=lambda x: x["total_score"], reverse=True)
     kept, du_bi = loc_theo_hang(topics, dai)
 
@@ -311,6 +330,11 @@ def extract_topics(work: Path, profile_path: str, model: str, dry: bool):
     cache = work / "topics.json"
     cache.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    if hinh:
+        nx = hinh_anh.nhan_xet_nguon(hinh)
+        if nx:
+            print(f"\n⚠️  {nx}")
+
     print(f"\n✅ {len(kept)} chủ đề -> {cache.name}"
           + (f" · {len(du_bi)} cái nữa để DỰ BỊ (điểm cao nhất trong nhóm dự bị: "
              f"{du_bi[0]['total_score']:.1f})" if du_bi else ""))
@@ -319,8 +343,12 @@ def extract_topics(work: Path, profile_path: str, model: str, dry: bool):
     for i, t in enumerate(kept, 1):
         dur = sum(s["end_sec"] - s["start_sec"] for s in t["segments"])
         dau = min(s["start_sec"] for s in t["segments"])
+        h = t.get("hinh")
+        ghi_hinh = (f" · hình tĩnh {h['ty_le_tinh']*100:.0f}% (lời {t['diem_loi']:.1f})"
+                    if h and h["ty_le_tinh"] > 0.05 else "")
         print(f"  {i}. [{t['total_score']:.1f}] {t['title']}  "
-              f"({len(t['segments'])} đoạn, {dur:.0f}s, từ {int(dau)//60}:{int(dau)%60:02d})")
+              f"({len(t['segments'])} đoạn, {dur:.0f}s, từ {int(dau)//60}:{int(dau)%60:02d})"
+              f"{ghi_hinh}")
 
 
 def main():

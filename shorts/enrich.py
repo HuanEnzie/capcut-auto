@@ -120,7 +120,9 @@ NGUYÊN TẮC GIỮ CHÂN: video ngắn phải liên tục có kích thích, kh�
 4) broll: 4-8 đoạn chèn VIDEO STOCK để đỡ nhàm. QUAN TRỌNG — B-ROLL BÁM MOOD & CÂU CHUYỆN, KHÔNG minh hoạ danh từ theo từng câu:
    - SAI (quá literal): nghe "nhân sự" → 'office paperwork HR'; nghe "AI" → 'robot'. Kiểu này ra stock quảng cáo văn phòng sáo rỗng, LẠC TÔNG với short.
    - ĐÚNG: chọn hình theo CẢM XÚC/HÀNH ĐỘNG của phân cảnh trong mạch chuyện (vd đoạn nói loay hoay đổi hết công cụ này tới công cụ khác → 'person overwhelmed by multiple screens', 'hand scrolling phone fast', 'frustrated working late on laptop'; đoạn insight/khuyên nhủ → 'person confident walking city', 'focused typing laptop close up').
-   - Ưu tiên clip NĂNG ĐỘNG, HIỆN ĐẠI, GẦN GŨI (người thật, chuyển động, cảm xúc) hợp nhịp short-form; TRÁNH cliché doanh nghiệp (bắt tay, họp bàn tròn, biểu đồ generic).
+   - TUYỆT ĐỐI TRÁNH CẬN MẶT NGƯỜI LẠ. B-roll được đặt NGAY CẠNH người đang nói trong video, nên một khuôn mặt lạ nhìn thẳng camera sẽ cướp hết chú ý và khiến người xem tưởng đó là nhân vật trong câu chuyện. Đã gặp thật: một người đàn ông lạ cận mặt xuất hiện giữa buổi chia sẻ, hỏng hoàn toàn.
+     ƯU TIÊN hình KHÔNG CÓ MẶT NGƯỜI: bàn tay đang thao tác, màn hình/giao diện, đồ vật, khung cảnh, chuyển động trừu tượng. Có người thì phải là DÁNG XA hoặc chỉ thấy tay/lưng, không thấy rõ mặt.
+   - Ưu tiên clip NĂNG ĐỘNG, HIỆN ĐẠI, hợp nhịp short-form; TRÁNH cliché doanh nghiệp (bắt tay, họp bàn tròn, biểu đồ generic, giấy tờ văn phòng).
    - Mỗi cái: start_sec, end_sec (mỗi đoạn 2-4 giây), query (TỪ KHOÁ TIẾNG ANH ngắn, thiên về cảm xúc/hành động), reason (nêu rõ nó phục vụ mood/câu chuyện thế nào).
 
 Emoji/SFX phải khớp nội dung tại thời điểm đó; B-roll phải khớp MOOD (theme) toàn short. Hook chọn loại mạnh nhất. Trả lời tiếng Việt (riêng broll.query bằng tiếng Anh)."""

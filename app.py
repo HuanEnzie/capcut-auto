@@ -691,6 +691,15 @@ def api_ingest(path: str, asr: str = "small", model: str = MODEL_CHAT_LUONG,
                 (wd / "transcript.survey.json").write_text(
                     json.dumps(sv, ensure_ascii=False), encoding="utf-8")
 
+            # Quét phần HÌNH: đoạn nào đứng yên. Rẻ (38 giây cho record 58 phút) và
+            # là thứ DUY NHẤT trong cả pipeline nhìn vào video — mọi bước khác chỉ đọc
+            # chữ, nên không bước nào phát hiện được "short này không có gì để nhìn".
+            import hinh_anh
+            h = hinh_anh.quet(str(src), wd)
+            nx = hinh_anh.nhan_xet_nguon(h)
+            if nx:
+                print(f"⚠️  {nx}")
+
             print(f"[3/3] Gemini trích chủ đề ({model})...")
             prof = str(assetlib.ROOT / "shorts" / "profiles" / "meeting.yaml")
             tp.extract_topics(wd, prof, model, False)
@@ -961,7 +970,12 @@ def api_generate(proj: str, topic: int, editor: str = "shared", model: str = MOD
         w = LogWriter(log)
         try:
             with contextlib.redirect_stdout(w):
-                bsd.build(work, topic, bsd.SFX_DEFAULT, model, False, draft_name, editor)
+                # Truyền cấu hình lớp của DỰ ÁN xuống build. Trước đây giao diện có
+                # 7 công tắc, lưu vào DB đầy đủ, mà build không đọc — bật tắt xong
+                # chẳng có gì xảy ra.
+                du_an = projects.lay_theo_work(proj)
+                bsd.build(work, topic, bsd.SFX_DEFAULT, model, False, draft_name, editor,
+                          cau_hinh=(du_an or {}).get("cau_hinh"))
         except SystemExit as e:            # build tự dừng (vd .locked / thiếu key)
             w.flush(); log(str(e))
             raise RuntimeError("dừng — xem log")

@@ -166,8 +166,24 @@ def split_cue(st, en, text, max_chars=18):
     return out
 
 
+LOP_MAC_DINH = {"caption": True, "hook": True, "sfx": True, "emoji": True,
+                "broll": True, "card_chot": True, "nhac_nen": True}
+
+
 def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str = None,
-          editor: str = "shared"):
+          editor: str = "shared", cau_hinh: dict = None):
+    """`cau_hinh`: {'lop': {tên lớp -> bật/tắt}, 'chon': {'sfx': [tên file được phép]}}.
+
+    Giao diện đã có 7 công tắc lớp từ trước và lưu vào DB, nhưng build KHÔNG ĐỌC —
+    bật tắt xong chẳng có gì xảy ra. Đó đúng là kiểu hỏng im lặng luật cứng #2 cấm.
+    """
+    cau_hinh = cau_hinh or {}
+    lop = {**LOP_MAC_DINH, **(cau_hinh.get("lop") or {})}
+    chon = cau_hinh.get("chon") or {}
+    tat = [k for k, v in lop.items() if not v]
+    if tat:
+        print(f"  [cấu hình] TẮT lớp: {', '.join(tat)}")
+
     topics = json.loads((work / "topics.json").read_text(encoding="utf-8"))
     topic = topics["topics"][idx - 1]
     tr = ensure_fine(work, topic)
@@ -195,7 +211,7 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         enr = None
     hook_dur = 0.0
     cuts = body_cuts
-    if enr and enr.get("hook"):
+    if enr and enr.get("hook") and lop.get("hook", True):
         ha, hb = snap(enr["hook"]["start_sec"], enr["hook"]["end_sec"], segs)
         hook_cut = (max(0, ha - 0.2), hb + 0.2)
         # PHẢI TRỪ hook khỏi thân. Gemini chọn hook là "khoảnh khắc ấn tượng nhất
@@ -330,19 +346,39 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
     vtrack["id"] = cb.uid()
     c["tracks"].append(vtrack)
 
-    # ---- B-ROLL: stock Pexels, overlay cutaway full-frame (ngay trên video chính, dưới caption) ----
+    # ---- B-ROLL: stock Pexels, đặt vào VÙNG CHẾT phía trên, KHÔNG che người nói ----
+    #
+    # Bản cũ phủ TRỌN KHUNG: đang xem một người Việt nói chuyện thì đột nhiên 3 giây
+    # là mặt một người lạ. Trong khi đó 2/3 khung hình là nền mờ vô nghĩa (video nguồn
+    # 16:9 đặt giữa khung dọc). Đưa B-roll lên đúng chỗ trống đó thì giải quyết cả hai:
+    # vùng chết có nội dung, mà người nói vẫn còn trên màn hình.
+    #
+    # Toạ độ: dải video nền cao ~607/1920 px nên chiếm y ∈ [-0,32; +0,32]. Vùng trống
+    # phía trên cao ~656px, tâm ở +0,66 (y dương là LÊN, học từ caption y=-0.72).
+    BROLL_CAO = 656
+    BROLL_Y = 0.66
     from pexels import fetch_broll
     broll_dir = work / "shorts" / "broll"
+    so_broll = work / "broll_da_dung.json"          # sổ theo dự án, chặn lặp giữa các short
+    try:
+        da_dung = set(json.loads(so_broll.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        da_dung = set()
     broll_segs = []
-    for i, b in enumerate(enr.get("broll", []) if enr else []):
+    for i, b in enumerate(enr.get("broll", []) if enr and lop.get("broll", True) else []):
         o = src_to_out(b["start_sec"])
         if o is None:
             continue
         cue_dur = max(1.5, min(b["end_sec"] - b["start_sec"], 4.0))
         broll_dir.mkdir(parents=True, exist_ok=True)
         bp = broll_dir / f"{base_tag}_broll{i}.mp4"
-        if not bp.exists() and not fetch_broll(b["query"], bp, cue_dur):
-            continue
+        if not bp.exists():
+            bp, vid = fetch_broll(b["query"], bp, cue_dur, h=BROLL_CAO, tranh_id=da_dung)
+            if not bp:
+                continue
+            if vid:
+                da_dung.add(vid)
+                so_broll.write_text(json.dumps(sorted(da_dung)), encoding="utf-8")
         vdur = int(probe_dur(bp) * 1_000_000)
         st_us = int(o * 1_000_000)
         use = min(int(cue_dur * 1_000_000), vdur, dur_us - st_us)
@@ -351,7 +387,8 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         bs = copy.deepcopy(seg_tpl); bs["id"] = cb.uid()
         bm = copy.deepcopy(prim_mat); bm["id"] = cb.uid()
         bm["path"] = str(bp).replace("\\", "/"); bm["material_name"] = f"broll{i}"
-        bm["duration"] = vdur; bm["width"] = 1080; bm["height"] = 1920; bm["has_audio"] = False
+        bm["duration"] = vdur; bm["width"] = 1080; bm["height"] = BROLL_CAO
+        bm["has_audio"] = False
         add(prim_arr, bm); bs["material_id"] = bm["id"]
         brefs = []
         for rid in seg_tpl["extra_material_refs"]:
@@ -366,7 +403,8 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         bs["source_timerange"] = {"start": 0, "duration": use}
         bs["target_timerange"] = {"start": st_us, "duration": use}
         bs["speed"] = 1.0; bs["volume"] = 0.0; bs["last_nonzero_volume"] = 0.0
-        bs["clip"] = {"scale": {"x": 1, "y": 1}, "rotation": 0, "transform": {"x": 0, "y": 0},
+        bs["clip"] = {"scale": {"x": 1, "y": 1}, "rotation": 0,
+                      "transform": {"x": 0, "y": BROLL_Y},
                       "flip": {"vertical": False, "horizontal": False}, "alpha": 1}
         broll_segs.append((st_us, st_us + use, bs))
     b_end, b_tracks = [], []
@@ -441,7 +479,8 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         nxt = short_cues[i + 1][0]
         if en > nxt:
             short_cues[i] = (st, nxt, tx)
-    add_text_track(short_cues, y=-0.72, scale=1.1, anim=True, font=p4["font"])
+    if lop.get("caption", True):
+        add_text_track(short_cues, y=-0.72, scale=1.1, anim=True, font=p4["font"])
 
     # EMOJI: AI chọn theo ngữ cảnh, nhỏ, rải góc (hook giờ là video cold-open nên bỏ banner)
     emo_items = []
@@ -500,10 +539,11 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         emo_items = [e for e in emo_items if e[0] not in picked_times]   # tránh chồng emoji lên sticker
 
     EMOJI_POS = [(0.62, 0.55), (-0.62, 0.55), (0.62, 0.15), (-0.62, 0.15)]  # rải nhiều góc
-    add_text_track(emo_items, y=0.55, scale=0.7, positions=EMOJI_POS)
+    if lop.get("emoji", True):
+        add_text_track(emo_items, y=0.55, scale=0.7, positions=EMOJI_POS)
 
     # CARD CHỐT trên đuôi kết: tiêu đề chủ đề + CTA. Không có nó thì hết lời là cụt ngang.
-    if dur_us > body_end_us > 0:
+    if dur_us > body_end_us > 0 and lop.get("card_chot", True):
         te0, te1 = body_end_us / 1e6, dur_us / 1e6
 
         def wrap(s, n=16):                     # bọc dòng cho khỏi TRÀN VIỀN
@@ -531,7 +571,14 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
     _, amat_src = cb.find_mat(dt, atrack_src["segments"][0]["material_id"])
     # SFX lấy từ KHO trước, thư mục chỉ định chỉ là nguồn phụ — máy khác không có
     # thư mục của máy dev thì vẫn phải ra được tiếng động.
-    kho_sfx = assetlib.sfx_kho(sfx_path or "")
+    kho_sfx = assetlib.sfx_kho(sfx_path or "") if lop.get("sfx", True) else {}
+    # Danh sách trắng: người dùng chỉ định đúng file được dùng. Để trống = cả kho
+    # (hành vi cũ) — nếu không, nâng cấp lên là draft đột nhiên mất sạch SFX.
+    if chon.get("sfx"):
+        giu = set(chon["sfx"])
+        bo = len(kho_sfx)
+        kho_sfx = {k: v for k, v in kho_sfx.items() if k in giu}
+        print(f"  [sfx] giới hạn theo cấu hình: {len(kho_sfx)}/{bo} file")
     if not kho_sfx:
         print("  [sfx] ⚠️ không có SFX nào để chèn (kho rỗng, không thấy thư mục SFX)")
     sfx_segs = []
