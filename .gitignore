@@ -12,3 +12,4 @@ library.db
 *.bak
 quarantine/
 .venv/
+capcut-auto-v1.zip
