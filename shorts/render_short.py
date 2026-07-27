@@ -98,6 +98,18 @@ def tighten_cuts(cuts: list, segs: list, max_gap: float = 0.8, keep: float = 0.1
     return out, n_gaps, saved
 
 
+def khoa_cap(seg) -> str:
+    """Khoá caption theo MỐC BẮT ĐẦU (mili-giây), KHÔNG theo id segment.
+
+    LỖI ĐÃ TRẢ GIÁ 27/07: captions_fixed.json khoá theo `seg["id"]`, mà refine_range
+    ĐÁNH SỐ LẠI TOÀN BỘ id mỗi lần trộn transcript. Sau một lượt làm sạch ghi lại
+    transcript.fine.json, id đổi hết -> chữ đã sửa của một segment dài 30 giây (400 ký
+    tự) bị gán vào segment 0,5 giây. split_cue chia 400 ký tự đó thành ~20 dòng, mỗi
+    dòng được 0,05 GIÂY: caption nhấp nháy 20 lần/giây, không đọc nổi.
+    Mốc thời gian thì không đổi khi trộn lại — đó mới là định danh đúng."""
+    return str(int(round(seg["start"] * 1000)))
+
+
 def captions_for_cuts(cuts: list, segs: list, fixed: dict = None) -> list:
     """Trả về [(out_start, out_end, text)] theo timeline output; dùng caption đã sửa nếu có."""
     fixed = fixed or {}
@@ -108,7 +120,10 @@ def captions_for_cuts(cuts: list, segs: list, fixed: dict = None) -> list:
                 continue
             st = max(seg["start"], c0) - c0 + offset
             en = min(seg["end"], c1) - c0 + offset
-            txt = fixed.get(str(seg["id"]), seg["text"]).strip()
+            # Ưu tiên chữ ĐÃ SẠCH nằm ngay trong segment (lam_sach_toan_bo ghi thẳng
+            # vào `text`, giữ bản thô ở `text_goc`) — đó là nguồn không thể lệch.
+            txt = (seg["text"] if seg.get("text_goc") is not None
+                   else fixed.get(khoa_cap(seg), seg["text"])).strip()
             if txt and en > st:
                 cues.append((st, en, txt))
         offset += (c1 - c0)

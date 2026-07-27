@@ -101,6 +101,47 @@ def khoa_khoang_cat(nguon: str, cuts) -> str:
         sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:8]
 
 
+TOI_THIEU_GIAY = 0.35        # dưới mức này thì mắt không kịp đọc
+
+def split_cue(st, en, text, max_chars=18):
+    words = text.split(); lines, cur = [], ""
+    for w in words:
+        if cur and len(cur + " " + w) > max_chars:
+            lines.append(cur); cur = w
+        else:
+            cur = (cur + " " + w).strip()
+    if cur:
+        lines.append(cur)
+    # CHỮ MỒ CÔI: chia thời lượng theo số ký tự nên dòng cuối chỉ có "xa." (3 ký
+    # tự) chỉ được 3/90 thời lượng = 0,06 giây — chớp một cái là mất. Đo trên draft
+    # thật: 15/89 dòng dưới 0,3 giây, gần như toàn dòng cuối. Gộp ngược vào dòng
+    # trước, chấp nhận dòng đó dài hơn max_chars một chút.
+    # Phải POP RA BIẾN TRƯỚC rồi mới gán. Viết `lines[-2] = f"... {lines.pop()}"`
+    # là Python tính vế phải trước, list ngắn đi một phần tử, rồi mới gán vào
+    # lines[-2] — lúc đó chỉ số đã trỏ ra ngoài. List 2 phần tử là IndexError ngay.
+    while len(lines) > 1 and len(lines[-1]) <= 6:
+        cuoi = lines.pop()
+        lines[-1] = f"{lines[-1]} {cuoi}"
+    total = sum(len(l) for l in lines) or 1
+    out, t = [], st
+    for l in lines:
+        d = (en - st) * len(l) / total
+        out.append((t, t + d, l)); t += d
+    # Dòng vẫn quá ngắn thì MƯỢN thời lượng của dòng liền trước — thà dòng trước
+    # ngắn đi một chút còn hơn có dòng không ai đọc kịp.
+    for i in range(len(out) - 1, 0, -1):
+        a, b, l = out[i]
+        thieu = TOI_THIEU_GIAY - (b - a)
+        if thieu <= 0:
+            continue
+        pa, pb, pl = out[i - 1]
+        muon = min(thieu, max(0.0, (pb - pa) - TOI_THIEU_GIAY))
+        if muon > 0:
+            out[i - 1] = (pa, pb - muon, pl)
+            out[i] = (a - muon, b, l)
+    return out
+
+
 def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str = None,
           editor: str = "shared"):
     topics = json.loads((work / "topics.json").read_text(encoding="utf-8"))
@@ -188,8 +229,16 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
     dur_us = int(probe_dur(base) * 1_000_000)
     body_end_us = dur_us - int(TAIL_SEC * 1_000_000)     # mốc bắt đầu đuôi kết
 
-    fixed = fix_captions(work, model)
-    cues = captions_for_cuts(cuts, segs, fixed)
+    # Làm sạch chữ NGAY TRONG transcript (chữ thô giữ ở `text_goc`) rồi ghi lại, thay
+    # cho cache captions_fixed.json khoá theo id. Cache đó đã gây lỗi nặng: id bị
+    # refine_range đánh số lại mỗi lần trộn transcript, nên chữ của segment 30 giây
+    # dán vào segment 0,5 giây -> caption nhấp nháy 20 lần/giây. Chữ nằm trong chính
+    # segment thì không thể lệch khỏi mốc thời gian của nó.
+    from caption_fix import lam_sach_toan_bo
+    if lam_sach_toan_bo(tr, model):
+        (work / "transcript.fine.json").write_text(
+            json.dumps(tr, ensure_ascii=False), encoding="utf-8")
+    cues = captions_for_cuts(cuts, segs)
 
     cb.kiem_tra_draft_mau(DONOR_V, DONOR_T)   # thiếu thì báo NGAY, đừng chạy 10 phút rồi mới chết
     dv, dt = cb.load_draft(DONOR_V), cb.load_draft(DONOR_T)
@@ -346,22 +395,6 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
             tr["segments"].append(ts)
         if tr["segments"]:
             c["tracks"].append(tr)
-
-    def split_cue(st, en, text, max_chars=18):
-        words = text.split(); lines, cur = [], ""
-        for w in words:
-            if cur and len(cur + " " + w) > max_chars:
-                lines.append(cur); cur = w
-            else:
-                cur = (cur + " " + w).strip()
-        if cur:
-            lines.append(cur)
-        total = sum(len(l) for l in lines) or 1
-        out, t = [], st
-        for l in lines:
-            d = (en - st) * len(l) / total
-            out.append((t, t + d, l)); t += d
-        return out
 
     # CAPTION: text ngắn, không chồng, băng dưới
     short_cues = []

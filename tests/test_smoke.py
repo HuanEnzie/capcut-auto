@@ -332,6 +332,57 @@ def test_nghi_theo_tung_model_khong_theo_ca_key(monkeypatch):
     g._NGHI.clear()
 
 
+def test_caption_khong_co_dong_qua_ngan():
+    """Đo trên draft thật 27/07: 15/89 dòng dưới 0,3 giây, gần như toàn 'chữ mồ côi'
+    ở cuối cue ('xa.', 'biết.', 'giờ') — chia thời lượng theo số ký tự nên dòng 3 ký
+    tự chỉ được 3/90 thời lượng = 0,06 giây, chớp một cái là mất.
+
+    Bài test ĐẦU TIÊN cho lỗi này chỉ soi mã nguồn (`'TOI_THIEU_GIAY' in src`) nên VẪN
+    XANH trong khi hàm ném IndexError ở mọi lượt build. Test soi chữ không chứng minh
+    được gì về hành vi — phải GỌI THẬT."""
+    import build_short_draft as bsd
+
+    # trường hợp làm vỡ bản vá đầu: đúng 2 dòng, dòng cuối là chữ mồ côi
+    ra = bsd.split_cue(0.0, 2.0, "Mình đi rất là xa.")
+    assert ra, "không được trả rỗng"
+    for a, b, t in ra:
+        assert b > a, f"dòng {t!r} có thời lượng âm hoặc bằng 0"
+
+    # cue dài: mọi dòng phải đọc kịp, và không dòng nào bị mất chữ
+    dai = ("Đầu tiên trong ít nhất hai tuần tới là phải hoàn thành hệ thống "
+           "edit tự động để giảm tải khối lượng công việc rất là xa.")
+    ra = bsd.split_cue(0.0, 12.0, dai)
+    ngan = [(b - a, t) for a, b, t in ra if b - a < 0.3]
+    assert not ngan, f"còn dòng dưới 0,3 giây: {ngan[:3]}"
+    assert " ".join(t for _, _, t in ra).split() == dai.split(), "ghép lại phải đủ chữ"
+
+    # thời lượng cộng lại không được vượt quá cue gốc
+    assert ra[0][0] >= -1e-9 and ra[-1][1] <= 12.0 + 1e-9
+
+    # cue quá ngắn để chia: vẫn phải ra thứ dùng được, không được nổ
+    assert bsd.split_cue(5.0, 5.2, "Ok.")
+
+
+def test_caption_khoa_theo_moc_thoi_gian_khong_theo_id():
+    """Bug đã gặp 27/07 (lớp lỗi ĐỊNH DANH KHÔNG ỔN ĐỊNH, lần thứ ba): captions_fixed
+    khoá theo seg['id'], mà refine_range đánh số lại TOÀN BỘ id mỗi lần trộn. Sau một
+    lượt làm sạch, chữ của segment 30 giây (400 ký tự) dán vào segment 0,5 giây ->
+    split_cue chia thành ~20 dòng, mỗi dòng 0,05 GIÂY, caption nhấp nháy không đọc nổi."""
+    from render_short import captions_for_cuts, khoa_cap
+    seg_ngan = {"id": 3, "start": 10.0, "end": 10.5, "text": "chữ thô"}
+    assert khoa_cap(seg_ngan) == "10000", "khoá phải là mốc bắt đầu (ms), không phải id"
+
+    # chữ đã sạch nằm TRONG segment thì phải thắng cache ngoài — không thể lệch
+    seg_sach = {"id": 3, "start": 10.0, "end": 10.5,
+                "text": "chữ đã sạch", "text_goc": "chữ thô"}
+    cues = captions_for_cuts([(9.0, 12.0)], [seg_sach], {"3": "CHỮ DÀI CỦA SEGMENT KHÁC"})
+    assert cues[0][2] == "chữ đã sạch", "cache khoá theo id không được đè chữ trong segment"
+
+    # segment CHƯA sạch thì tra cache theo mốc, khoá id cũ phải trượt (không dán nhầm)
+    cues2 = captions_for_cuts([(9.0, 12.0)], [seg_ngan], {"3": "CHỮ DÀI CỦA SEGMENT KHÁC"})
+    assert cues2[0][2] == "chữ thô", "khoá id cũ vẫn dán được vào segment khác"
+
+
 def test_cam_ai_doi_ten_rieng_khi_lam_sach():
     """Bug đã gặp 27/07: Whisper nghe 'nano bar na 2' (Nano Banana 2 — model ảnh của
     Google), AI 'sửa' thành 'Runway Gen-2' — đổi hẳn sang sản phẩm KHÁC. Gán cho diễn
