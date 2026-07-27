@@ -43,21 +43,37 @@ def lines_in_topics(topics: dict, transcript: dict) -> list:
 
 
 def fix_captions(work: Path, model: str) -> dict:
+    """Sửa chính tả ASR cho các dòng nằm trong chủ đề. Cache theo ID DÒNG, cộng dồn.
+
+    Trước đây cache trả về nguyên khối: phân tích lại ra chủ đề khác thì những dòng
+    MỚI không có trong cache vẫn bị coi như xong, caption rơi về text ASV thô mà
+    không báo gì. Giờ chỉ gọi Gemini cho phần CÒN THIẾU rồi trộn vào cache.
+    """
     cache = work / "captions_fixed.json"
+    da_co: dict = {}
     if cache.exists():
-        print("  [caption-fix] dùng cache")
-        return json.loads(cache.read_text(encoding="utf-8"))
-    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
-        print("  [caption-fix] thiếu GEMINI_API_KEY -> bỏ qua, dùng text gốc")
-        return {}
+        try:
+            da_co = json.loads(cache.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            da_co = {}
 
     topics = json.loads((work / "topics.json").read_text(encoding="utf-8"))
     from transcribe import load_transcript
     transcript = load_transcript(work)      # phải là bản CÓ mốc từ, không phải survey
     id2seg = {s["id"]: s for s in transcript["segments"]}
-    ids = lines_in_topics(topics, transcript)
+    can = lines_in_topics(topics, transcript)
+    if not can:
+        return da_co
+    ids = [i for i in can if str(i) not in da_co]
     if not ids:
-        return {}
+        print(f"  [caption-fix] dùng cache ({len(can)} dòng)")
+        return da_co
+    if da_co:
+        print(f"  [caption-fix] cache thiếu {len(ids)}/{len(can)} dòng (chủ đề đã đổi) "
+              f"-> chỉ sửa phần thiếu")
+    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        print("  [caption-fix] thiếu GEMINI_API_KEY -> bỏ qua, dùng text gốc")
+        return da_co
     from google import genai
     from google.genai import types
     client = genai.Client()
@@ -86,12 +102,16 @@ def fix_captions(work: Path, model: str) -> dict:
     # KHÔNG cache kết quả tệ: ghi cache rỗng thì mọi lần build sau đều dùng lại nó
     # và caption vĩnh viễn không được sửa mà không báo gì.
     if len(fixed) >= max(1, len(ids) // 2):
-        cache.write_text(json.dumps(fixed, ensure_ascii=False, indent=1), encoding="utf-8")
+        da_co.update(fixed)                    # cộng dồn, không đè phần đã sửa trước
+        cache.write_text(json.dumps(da_co, ensure_ascii=False, indent=1), encoding="utf-8")
         print(f"  [caption-fix] xong {len(fixed)}/{len(ids)} dòng -> {cache.name}")
     else:
         print(f"  [caption-fix] CHỈ sửa được {len(fixed)}/{len(ids)} dòng — "
               f"KHÔNG lưu cache để lần sau thử lại")
-    return fixed
+        da_co = {**da_co, **fixed}             # vẫn dùng cho lượt build này
+    # Trả về TOÀN BỘ, không chỉ phần vừa sửa: caller lấy caption theo id dòng, trả
+    # thiếu là những dòng sửa từ lần trước rơi ngược về text ASR thô.
+    return da_co
 
 
 def main():

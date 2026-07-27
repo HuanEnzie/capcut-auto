@@ -13,12 +13,13 @@ CÁCH DÙNG:
   python build_short_draft.py work/1107 --only 4          # tạo reframe (nếu thiếu) + draft
   python build_short_draft.py work/1107 --only 4 --dry    # chỉ kiểm tra integrity
 """
-import argparse, copy, json, subprocess, sys, time, uuid
+import argparse, copy, hashlib, json, subprocess, sys, time, uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))  # để import capcut_build
 import capcut_build as cb
 import assetlib
+import gemini_util
 from render_short import snap, reframe_cut, captions_for_cuts, tighten_cuts, append_tail
 from caption_fix import fix_captions
 from enrich import enrich_topic
@@ -84,8 +85,20 @@ def ensure_fine(work: Path, topic: dict, asr_model="medium", device="cuda") -> d
     for s in topic["segments"]:
         a, b = s["start_sec"], s["end_sec"]
         if not has_words(tr, a, b):
-            tr = trm.refine_range(src, a, b, asr_model, device)
+            # ten=work.name: dự án dùng lại record của dự án khác có thư mục riêng,
+            # suy tên từ file record là ghi nhầm sang thư mục của dự án kia.
+            tr = trm.refine_range(src, a, b, asr_model, device, ten=work.name)
     return tr
+
+
+def khoa_khoang_cat(nguon: str, cuts) -> str:
+    """Khoá cache cho video nền + B-roll: băm NGUỒN + KHOẢNG CẮT.
+
+    Tách riêng để test khoá được: đây là chỗ đã gây ra draft trộn nội dung hai lần
+    phân tích (xem chú thích tại nơi gọi)."""
+    return hashlib.sha1(json.dumps(
+        {"nguon": str(nguon), "cat": [[round(a, 3), round(b, 3)] for a, b in cuts]},
+        sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:8]
 
 
 def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str = None,
@@ -105,7 +118,16 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         print(f"  [nhịp] bỏ {n_gaps} khoảng lặng, rút gọn {saved:.1f}s")
 
     # AI enrichment: hook (cold-open) + emoji + sfx
-    enr = enrich_topic(work, idx, model)
+    # Cạn hạn ngạch KHÔNG được giết cả lượt build: enrich là đồ tô điểm, còn phần
+    # xương sống (video nền + caption) đã có đủ. Mất trắng sau khi đã bóc lời và
+    # render xong thì đắt hơn nhiều so với một draft trơn kèm cảnh báo rõ.
+    try:
+        enr = enrich_topic(work, idx, model)
+    except gemini_util.HetHanNgach as e:
+        print(f"  [enrich] ⚠️ CẠN HẠN NGẠCH GEMINI — dựng draft TRƠN (không hook, "
+              f"emoji, SFX, B-roll). Chạy lại sau khi hạn ngạch reset để có đủ lớp.")
+        print(f"  [enrich]   {str(e).split('—')[0].strip()}")
+        enr = None
     hook_dur = 0.0
     if enr and enr.get("hook"):
         ha, hb = snap(enr["hook"]["start_sec"], enr["hook"]["end_sec"], segs)
@@ -133,9 +155,17 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
             return best[1]
         return None
 
-    # reframe + broll dùng chung theo CHỦ ĐỀ (không theo tên draft) -> Dan/Nguyên cùng topic
-    # tái dùng, tạo draft lần 2 nhanh. Chỉ render khi CHƯA có file (không đè -> an toàn khi CapCut mở).
-    base_tag = f"t{idx}"
+    # reframe + broll dùng chung theo NỘI DUNG (không theo tên draft) -> Dan/Nguyên cùng
+    # chủ đề tái dùng, tạo draft lần 2 nhanh. Chỉ render khi CHƯA có file (không đè ->
+    # an toàn khi CapCut đang mở).
+    #
+    # KHOÁ PHẢI THEO KHOẢNG CẮT, KHÔNG THEO CHỈ SỐ CHỦ ĐỀ. Lỗi đã trả giá 27/07: bấm
+    # "Phân tích" lại thì transcript lấy từ cache nhưng Gemini trả về danh sách chủ đề
+    # KHÁC, nên "chủ đề 1" trỏ sang đoạn khác — mà file reframe_t1.mp4 cũ vẫn còn nên
+    # được tái dùng. Kết quả: caption/SFX/B-roll dựng cho chủ đề mới, còn hình và tiếng
+    # bên dưới là của chủ đề cũ. Draft trộn, không lỗi, không cảnh báo.
+    # Băm khoảng cắt + nguồn: khoảng cắt đổi -> file khác; giống nhau -> vẫn dùng chung.
+    base_tag = f"t{idx}_{khoa_khoang_cat(tr['source'], cuts)}"
     base = work / "shorts" / f"reframe_{base_tag}.mp4"
     if not base.exists():
         print(f"  [base] render {base.name}...")
@@ -143,7 +173,9 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         if len(cuts) == 1:
             reframe_cut(tr["source"], cuts[0][0], cuts[0][1] - cuts[0][0], base)
         else:
-            tmp = base.parent / f".tmp_{idx}"; tmp.mkdir(exist_ok=True); parts = []
+            # cũng theo base_tag: thư mục tạm khoá theo chỉ số sẽ lẫn mảnh của lần
+            # phân tích trước khi số mảnh lần này ít hơn.
+            tmp = base.parent / f".tmp_{base_tag}"; tmp.mkdir(exist_ok=True); parts = []
             for j, (c0, c1) in enumerate(cuts):
                 p = tmp / f"p{j}.mp4"; reframe_cut(tr["source"], c0, c1 - c0, p); parts.append(p)
             lst = tmp / "l.txt"; lst.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
@@ -526,6 +558,11 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
     meta["draft_materials"] = groups
     meta["draft_id"] = cb.uid(); meta["draft_name"] = c["name"]
     meta["draft_fold_path"] = str(out).replace("\\", "/"); meta["tm_duration"] = dur_us
+    # draft_root_path đi theo draft MẪU nên mang đường dẫn của máy làm ra nó
+    # (C:\Users\Acer\...). Không gây hỏng ngay vì CapCut đọc thư mục thật, nhưng đó
+    # là rác của máy khác nằm trong dữ liệu người dùng — lần thứ tư dính đúng kiểu
+    # hardcode đường dẫn máy dev. Ghi đè bằng thư mục draft của máy đang chạy.
+    meta["draft_root_path"] = str(cb.DRAFTS_ROOT)
     (out / "draft_meta_info.json").write_text(json.dumps(meta, **cb._DUMP), encoding="utf-8")
     print(f"\n✅ Draft CapCut: {out.name}  (mở CapCut để xem)")
 

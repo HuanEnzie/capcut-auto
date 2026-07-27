@@ -28,15 +28,104 @@ from cuda_setup import enable_cuda
 
 WORK_ROOT = Path(__file__).parent / "work"
 
+# Trần luồng cho CTranslate2 — xem đo đạc trong _luong_cpu(). Vượt trần là sập cứng
+# (stack overflow trong ctranslate2.dll), không phải chậm đi.
+TRAN_LUONG = 4
+
 
 def slug(name: str) -> str:
     s = re.sub(r"[^\w\-]+", "_", Path(name).stem).strip("_")
     return s or "recording"
 
 
-def work_dir(source: str) -> Path:
-    d = WORK_ROOT / slug(source)
+TOC_DO = WORK_ROOT / "toc_do_asr.json"
+
+
+def ghi_toc_do(rtf: float, model_name: str, device: str) -> None:
+    """Nhớ tốc độ bóc lời ĐO ĐƯỢC TRÊN MÁY NÀY, để giao diện ước lượng bằng số thật."""
+    if rtf and rtf > 0:
+        try:
+            WORK_ROOT.mkdir(parents=True, exist_ok=True)
+            TOC_DO.write_text(json.dumps(
+                {"realtime_factor": rtf, "model": model_name, "device": device},
+                ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass                                # ước lượng đẹp hơn không đáng để gãy build
+
+
+def toc_do_asr() -> tuple:
+    """(hệ số realtime, có phải số đo thật của máy này không).
+
+    Chưa chạy lần nào thì đoán DÈ DẶT. Thà báo lâu hơn thực tế còn hơn hứa 2 phút rồi
+    bắt người ta ngồi 4 phút — con số cũ (30x) là đo trên GPU máy dev, máy chạy CPU
+    thấp hơn nhiều lần."""
+    try:
+        d = json.loads(TOC_DO.read_text(encoding="utf-8"))
+        if d.get("realtime_factor", 0) > 0:
+            return float(d["realtime_factor"]), True
+    except (OSError, ValueError):
+        pass
+    return 10.0, False
+
+
+class NguonKhongKhop(RuntimeError):
+    """Thư mục làm việc đang giữ cache của MỘT record KHÁC.
+
+    Có lớp riêng để tầng trên báo đúng nguyên nhân, vì hậu quả rất khó nhận ra:
+    không crash, không lỗi, chỉ ra draft trộn nội dung hai record."""
+
+
+def _khoa_nguon(source: str, d: Path) -> None:
+    """Ghi/đối chiếu danh tính record của thư mục làm việc.
+
+    VÌ SAO CẦN: `slug()` chỉ lấy TÊN file, bỏ hết đường dẫn — hai record khác nhau
+    cùng tên 'test.mp4' dùng chung một thư mục. Mọi cache trong đó (audio.wav,
+    transcript, reframe) lại tái dùng chỉ vì file tồn tại, nên record mới lặng lẽ
+    thừa hưởng dữ liệu của record cũ và draft dựng ra bị TRỘN. Đổi cách đặt tên thư
+    mục thì hỏng mọi draft cũ (draft giữ đường dẫn tuyệt đối vào đây), nên thay vì
+    đổi tên, ta đặt một cửa kiểm.
+
+    Định danh lấy theo KÍCH THƯỚC BYTE chứ không theo đường dẫn: người dùng dời hay
+    đổi tên thư mục chứa record là chuyện thường, còn hai record khác nhau trùng
+    kích thước tới từng byte thì gần như không xảy ra.
+    """
+    p = Path(source)
+    try:
+        cn = {"path": str(p.resolve()).replace("\\", "/"), "size": p.stat().st_size}
+    except OSError:
+        return                                  # nguồn không đọc được: để tầng trên báo
+    f = d / "nguon.json"
+    if not f.exists():
+        # Thư mục có sẵn cache từ trước mà chưa có dấu -> nhận luôn record này làm chủ.
+        f.write_text(json.dumps(cn, ensure_ascii=False), encoding="utf-8")
+        return
+    try:
+        cu = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        f.write_text(json.dumps(cn, ensure_ascii=False), encoding="utf-8")
+        return
+    if cu.get("size") == cn["size"]:
+        if cu.get("path") != cn["path"]:        # cùng file, chỉ dời chỗ -> cập nhật im lặng
+            f.write_text(json.dumps(cn, ensure_ascii=False), encoding="utf-8")
+        return
+    raise NguonKhongKhop(
+        f"Thư mục làm việc '{d.name}' đang giữ dữ liệu của một record KHÁC.\n"
+        f"  đang có : {cu.get('path')}  ({cu.get('size'):,} byte)\n"
+        f"  bạn đưa : {cn['path']}  ({cn['size']:,} byte)\n"
+        f"Hai file trùng tên nên dùng chung thư mục — chạy tiếp sẽ ra draft TRỘN nội "
+        f"dung hai record. Cách xử lý: đổi tên file record cho khác đi, hoặc xoá thư "
+        f"mục '{d}' nếu không cần dữ liệu cũ.")
+
+
+def work_dir(source: str, ten: str = "") -> Path:
+    """Thư mục làm việc. `ten` để CALLER tự đặt tên thay vì suy từ tên file.
+
+    Cần vì một record có thể được dựng ở NHIỀU dự án, mỗi dự án phải phân tích lại
+    từ đầu — dùng chung thư mục thì dự án thứ hai thừa hưởng luôn chủ đề và cache của
+    dự án thứ nhất, tức là chẳng làm lại gì cả."""
+    d = WORK_ROOT / (ten or slug(source))
     d.mkdir(parents=True, exist_ok=True)
+    _khoa_nguon(source, d)
     return d
 
 
@@ -87,6 +176,21 @@ def _luong_cpu() -> int:
         tiny   4 luồng 12,8s   |  8 luồng 14,2s   (chậm hơn 11%)
 
     Nhồi thêm luồng vào batched inference là hại, không lợi. Đặt CT2_THREADS để đè.
+
+    TRẦN 4 LUỒNG — đo 27/07/2026 trên máy trạm i7-12700 (12 nhân / 20 luồng), file
+    58 phút, model small, batched + VAD:
+
+        9 luồng  -> SẬP: python.exe chết trong ctranslate2.dll, 0xC00000FD
+                    (stack overflow). File 5 phút thì thoát, từ 10 phút là sập.
+        4 luồng  -> chạy trọn, 230s (15,0x realtime)   ← nhanh nhất
+        1 luồng  -> chạy trọn, 474s (7,3x realtime)
+
+    Nên trần này KHÔNG đánh đổi tốc độ lấy ổn định: cấu hình cũ vừa sập vừa chậm hơn.
+    Máy dev (4 nhân / 8 luồng) vẫn ra 3 như trước, trần không đụng tới.
+
+    Công thức cũ `cpu_count()//2 - 1` tự nhận là "số nhân thật", nhưng chỉ đúng khi
+    MỌI nhân đều siêu phân luồng. CPU nhân lai (P-core có HT + E-core không HT) phá
+    giả định đó: 12 nhân thật mà ra 9. Đó là lý do lỗi chỉ lộ trên máy thứ hai.
     """
     v = os.environ.get("CT2_THREADS")
     if v and v.isdigit() and int(v) > 0:
@@ -96,13 +200,14 @@ def _luong_cpu() -> int:
         # CHỪA LẠI MỘT NHÂN cho web server. Ăn hết nhân thật thì uvicorn không kịp
         # trả lời /api/jobs, trình duyệt tưởng mất kết nối trong lúc đang bóc lời —
         # đúng lúc người dùng nhìn chằm chằm vào thanh tiến trình.
-        return max(1, mp.cpu_count() // 2 - 1)
+        return max(1, min(TRAN_LUONG, mp.cpu_count() // 2 - 1))
     except (ImportError, NotImplementedError):
         return 3
 
 
-def transcribe(source: str, model_name: str = "small", device: str = "cuda") -> dict:
-    wd = work_dir(source)
+def transcribe(source: str, model_name: str = "small", device: str = "cuda",
+               ten: str = "") -> dict:
+    wd = work_dir(source, ten)
     cache = wd / f"transcript.{model_name}.json"
     if cache.exists():
         print(f"  [asr] dùng cache: {cache.name}")
@@ -172,10 +277,11 @@ def transcribe(source: str, model_name: str = "small", device: str = "cuda") -> 
 # không phải nghẽn tính toán. Tầng 1 bật batched + greedy để nhồi GPU; tầng 2 mới
 # xài cấu hình đắt tiền, nhưng chỉ trên 1-3 phút audio.
 
-def transcribe_survey(source: str, model_name: str = "small", device: str = "cuda") -> dict:
+def transcribe_survey(source: str, model_name: str = "small", device: str = "cuda",
+                      ten: str = "") -> dict:
     """TẦNG 1 — khảo sát cả file, chỉ cần đủ tốt để Gemini tìm chủ đề.
     Không lấy mốc từng từ (đắt, chỉ caption cuối mới cần)."""
-    wd = work_dir(source)
+    wd = work_dir(source, ten)
     cache = wd / "transcript.survey.json"
     if cache.exists():
         print("  [asr-survey] dùng cache")
@@ -216,16 +322,17 @@ def transcribe_survey(source: str, model_name: str = "small", device: str = "cud
             "n_segments": len(seg_list), "transcribe_sec": round(dt, 1),
             "realtime_factor": round(dur / dt, 1) if dt else 0, "segments": seg_list}
     cache.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    ghi_toc_do(data["realtime_factor"], model_name, device)
     print(f"  [asr-survey] XONG {len(seg_list)} segment trong {fmt_ts(dt)} "
           f"({data['realtime_factor']}x realtime)")
     return data
 
 
 def refine_range(source: str, t0: float, t1: float, model_name: str = "medium",
-                 device: str = "cuda", pad: float = 8.0) -> dict:
+                 device: str = "cuda", pad: float = 8.0, ten: str = "") -> dict:
     """TẦNG 2 — bóc KỸ chỉ đoạn [t0,t1] (model to + mốc từng từ + beam 5),
     rồi trộn vào transcript.fine.json. Mốc thời gian giữ TUYỆT ĐỐI theo file gốc."""
-    wd = work_dir(source)
+    wd = work_dir(source, ten)
     fine_p = wd / "transcript.fine.json"
     a, b = max(0.0, t0 - pad), t1 + pad
 

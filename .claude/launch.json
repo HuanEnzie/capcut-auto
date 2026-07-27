@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "capcut-auto",
-      "runtimeExecutable": "python",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["app.py"],
       "port": 8765
     }

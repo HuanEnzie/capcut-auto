@@ -266,3 +266,113 @@ def test_chuoi_structured_output_co_model_han_ngach_cao():
     import gemini_util
     assert any(m.endswith("-lite") for m in gemini_util.FALLBACKS), \
         "phải có model RPD cao ở cuối chuỗi để hạ cánh mềm khi cạn hạn ngạch"
+
+
+# ─────────────── lỗi bắt được trên máy trạm 27/07 ───────────────
+
+def test_luong_cpu_khong_vuot_tran(monkeypatch):
+    """Bug đã gặp: máy 12 nhân/20 luồng ra 9 luồng -> ctranslate2.dll SẬP CỨNG
+    (0xC00000FD stack overflow) trên file dài, kéo theo cả web server. Đo được:
+    4 luồng chạy trọn 58 phút và còn NHANH HƠN 9 luồng."""
+    import multiprocessing as mp
+    import transcribe
+    monkeypatch.delenv("CT2_THREADS", raising=False)
+    for so_luong in (4, 8, 12, 20, 32, 128):
+        monkeypatch.setattr(mp, "cpu_count", lambda n=so_luong: n)
+        v = transcribe._luong_cpu()
+        assert 1 <= v <= transcribe.TRAN_LUONG, \
+            f"cpu_count={so_luong} -> {v} luồng, vượt trần {transcribe.TRAN_LUONG} là sập cứng"
+
+
+def test_work_dir_bat_duoc_record_khac_trung_ten(tmp_path, monkeypatch):
+    """Bug đã gặp: slug() chỉ lấy TÊN file nên hai record khác nhau cùng tên
+    'test.mp4' dùng chung thư mục làm việc; cache tái dùng lẫn nhau -> draft TRỘN
+    nội dung hai record, không lỗi, không cảnh báo."""
+    import transcribe
+    monkeypatch.setattr(transcribe, "WORK_ROOT", tmp_path / "work")
+
+    a = tmp_path / "mayA"; a.mkdir()
+    (a / "test.mp4").write_bytes(b"x" * 1000)
+    b = tmp_path / "mayB"; b.mkdir()
+    (b / "test.mp4").write_bytes(b"y" * 2000)          # record KHÁC, cùng tên
+
+    d1 = transcribe.work_dir(str(a / "test.mp4"))
+    d2_se_trung = transcribe.WORK_ROOT / transcribe.slug(str(b / "test.mp4"))
+    assert d1 == d2_se_trung, "tiền đề của bug: hai record cùng tên trỏ cùng thư mục"
+
+    with pytest.raises(transcribe.NguonKhongKhop):
+        transcribe.work_dir(str(b / "test.mp4"))
+
+
+def test_work_dir_cho_phep_doi_record_di_cho(tmp_path, monkeypatch):
+    """Cùng một file dời sang thư mục khác thì KHÔNG được chặn — người dùng dời
+    record là chuyện thường, chặn nhầm còn khó chịu hơn."""
+    import transcribe
+    monkeypatch.setattr(transcribe, "WORK_ROOT", tmp_path / "work")
+    a = tmp_path / "cho_cu"; a.mkdir()
+    (a / "rec.mp4").write_bytes(b"z" * 4096)
+    transcribe.work_dir(str(a / "rec.mp4"))
+
+    b = tmp_path / "cho_moi"; b.mkdir()
+    (b / "rec.mp4").write_bytes(b"z" * 4096)           # cùng kích thước = cùng file
+    transcribe.work_dir(str(b / "rec.mp4"))            # không được ném
+
+
+def test_moi_du_an_co_thu_muc_lam_viec_rieng(tmp_path, monkeypatch):
+    """Hai dự án dùng chung MỘT record phải phân tích RIÊNG. Dùng chung thư mục thì
+    dự án thứ hai thừa hưởng transcript + chủ đề + video nền của dự án thứ nhất —
+    tức là 'làm lại' mà chẳng làm lại gì."""
+    import transcribe
+    monkeypatch.setattr(transcribe, "WORK_ROOT", tmp_path / "work")
+    rec = tmp_path / "test.mp4"
+    rec.write_bytes(b"a" * 512)
+
+    mac_dinh = transcribe.work_dir(str(rec))
+    rieng = transcribe.work_dir(str(rec), ten="test_2")
+    assert mac_dinh.name == "test"
+    assert rieng.name == "test_2", "phải theo tên caller đưa, không suy từ tên file"
+    assert mac_dinh != rieng
+
+
+def test_khoa_video_nen_theo_khoang_cat_khong_theo_chi_so():
+    """Bug đã gặp: reframe_t{N}.mp4 khoá theo CHỈ SỐ chủ đề. Phân tích lại ra danh
+    sách chủ đề khác -> 'chủ đề 1' là đoạn khác, nhưng file cũ vẫn được tái dùng:
+    caption/SFX của chủ đề MỚI phủ lên hình+tiếng của chủ đề CŨ."""
+    import build_short_draft as bsd
+    nguon = "C:/rec/test.mp4"
+    cu = [(816.0, 972.0)]
+    moi = [(890.0, 984.0)]
+    assert bsd.khoa_khoang_cat(nguon, cu) != bsd.khoa_khoang_cat(nguon, moi), \
+        "khoảng cắt đổi mà khoá không đổi -> tái dùng nhầm video nền"
+    assert bsd.khoa_khoang_cat(nguon, cu) == bsd.khoa_khoang_cat(nguon, list(cu)), \
+        "cùng khoảng cắt phải cùng khoá (2 editor cùng chủ đề vẫn dùng chung file)"
+    assert bsd.khoa_khoang_cat("D:/khac/test.mp4", cu) != bsd.khoa_khoang_cat(nguon, cu), \
+        "khác record mà cùng khoá -> lại trộn nội dung"
+
+
+def test_khoa_enrich_theo_noi_dung_chu_de():
+    """Cùng lỗi lớp trên, ở cache enrich: hook/emoji/SFX của chủ đề cũ dán vào mới."""
+    import enrich
+    a = {"title": "Chủ đề A", "segments": [{"start_sec": 10, "end_sec": 20}]}
+    b = {"title": "Chủ đề B", "segments": [{"start_sec": 90, "end_sec": 99}]}
+    assert enrich.khoa_chu_de(a) != enrich.khoa_chu_de(b)
+    assert enrich.khoa_chu_de(a) == enrich.khoa_chu_de(dict(a))
+
+
+def test_build_ha_canh_mem_khi_can_han_ngach(monkeypatch):
+    """Bug đã gặp: HetHanNgach từ enrich ném xuyên qua build -> mất trắng cả lượt
+    sau khi đã bóc lời và render. Enrich là đồ tô điểm, không phải xương sống."""
+    import build_short_draft as bsd, gemini_util, inspect
+    src = inspect.getsource(bsd.build)
+    assert "HetHanNgach" in src, "build phải bắt HetHanNgach quanh enrich_topic"
+    assert hasattr(gemini_util, "HetHanNgach")
+
+
+def test_uoc_luong_thoi_gian_khong_hardcode_toc_do_may_dev():
+    """Bug đã gặp: eta = dur/30/60 — hệ số 30x đo trên GPU máy dev, đóng cứng cho
+    mọi máy. Máy chạy CPU đo được 14,5x -> hứa 2 phút, bắt ngồi 4 phút."""
+    import inspect
+    import app
+    src = inspect.getsource(app.api_browse)
+    assert "toc_do_asr" in src, "phải ước lượng theo tốc độ đo được trên máy đang chạy"
+    assert "/ 30 / 60" not in src, "còn hardcode hệ số của máy dev"

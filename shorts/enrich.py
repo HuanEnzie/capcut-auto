@@ -8,7 +8,7 @@ enrich.py — "Bộ não AI" cho short: Gemini đọc 1 đoạn + kho SFX -> quy
 Cache enrich_NN.json. CẦN GEMINI_API_KEY.
   python enrich.py work/1107 --only 4
 """
-import argparse, json, os, sys
+import argparse, hashlib, json, os, sys
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -69,18 +69,32 @@ def topic_lines(topic, transcript, fixed):
     return out
 
 
+def khoa_chu_de(topic: dict) -> str:
+    """Băm NỘI DUNG chủ đề để làm khoá cache.
+
+    Không dùng chỉ số thứ tự: phân tích lại cùng một record vẫn ra danh sách chủ đề
+    khác nhau (Gemini không tất định), nên 'chủ đề 1' hôm nay và hôm qua là hai đoạn
+    hoàn toàn khác. Khoá theo chỉ số thì hook/emoji/SFX của đoạn cũ lặng lẽ dán vào
+    đoạn mới — đúng lỗi đã trả giá 27/07.
+    """
+    return hashlib.sha1(json.dumps(
+        {"title": topic.get("title", ""),
+         "segments": [[s.get("start_sec"), s.get("end_sec")] for s in topic.get("segments", [])]},
+        sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:8]
+
+
 def enrich_topic(work: Path, idx: int, model: str) -> dict:
-    cache = work / f"enrich_{idx:02d}.json"
+    topics = json.loads((work / "topics.json").read_text(encoding="utf-8"))
+    topic = topics["topics"][idx - 1]
+    cache = work / f"enrich_{idx:02d}_{khoa_chu_de(topic)}.json"
     if cache.exists():
         print("  [enrich] dùng cache"); return json.loads(cache.read_text(encoding="utf-8"))
     if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
         sys.exit("Thiếu GEMINI_API_KEY")
 
-    topics = json.loads((work / "topics.json").read_text(encoding="utf-8"))
     from transcribe import load_transcript
     tr = load_transcript(work)
     fixed = json.loads((work / "captions_fixed.json").read_text(encoding="utf-8")) if (work / "captions_fixed.json").exists() else {}
-    topic = topics["topics"][idx - 1]
     lines = topic_lines(topic, tr, fixed)
     sfx_files = list(_kho_sfx())
     if not sfx_files:
