@@ -187,6 +187,29 @@ CREATE INDEX IF NOT EXISTS ix_sha ON assets(sha256);
 CREATE TABLE IF NOT EXISTS usage(
   asset_id INTEGER, draft TEXT, action TEXT, ts REAL
 );
+
+-- DỰ ÁN cấp app: một buổi ghi hình -> nhiều CapCut project.
+-- Trước đây "dự án" chỉ là thư mục làm việc suy ra từ tên file record, không có
+-- chỗ nào ghi người dùng ĐANG LÀM GÌ với nó: quy trình nào, đã chọn tài nguyên ra
+-- sao, tên gọi cho dễ nhớ. Nay tách ra bảng riêng.
+--
+-- work_dir vẫn là KHOÁ KỸ THUẬT (draft và cache đều bám theo nó), còn `ten` chỉ là
+-- nhãn hiển thị — đổi tên dự án không được phép làm hỏng draft đã dựng.
+CREATE TABLE IF NOT EXISTS projects(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ten TEXT NOT NULL,
+  quy_trinh TEXT NOT NULL,           -- mã quy trình: record_ai | koc_ai | ...
+  record_path TEXT,                  -- file record nguồn (tuyệt đối)
+  -- KHÔNG unique: nhiều dự án được phép dùng chung một record. Chặn là ép người
+  -- dùng nhân bản file chỉ để đổi tên, mà dùng chung thì transcript và video nền
+  -- đã bóc rồi được tái dùng — đó là điều mong muốn, không phải lỗi.
+  work_dir TEXT,                     -- tên thư mục trong shorts/work/
+  editor TEXT DEFAULT 'shared',
+  cau_hinh TEXT,                     -- JSON: lớp bật/tắt + tài nguyên đã chọn
+  ghi_chu TEXT,
+  tao_luc REAL, sua_luc REAL
+);
+CREATE INDEX IF NOT EXISTS ix_proj_work ON projects(work_dir);
 """
 
 

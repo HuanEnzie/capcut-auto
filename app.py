@@ -23,6 +23,7 @@ from pydantic import BaseModel
 import uvicorn
 
 import assetlib, asset_restore, audio_balance, capcut_inventory, draft_diff, draft_scan
+import projects
 
 sys.path.insert(0, str(assetlib.ROOT / "shorts"))
 import build_short_draft as bsd
@@ -122,14 +123,36 @@ def api_drafts():
 
 
 @app.post("/api/draft/{name}/open")
-def api_draft_open(name: str):
-    """Mở thư mục draft trong Explorer. Dựng xong mà phải tự đi tìm thư mục thì
-    coi như chưa xong việc — nút này nối app với CapCut."""
+def api_draft_open(name: str, trong_capcut: bool = False):
+    """Mở thư mục draft, hoặc BẬT CapCut lên (không nhảy được tới đúng draft).
+
+    ĐO NGÀY 27/07/2026 — CapCut KHÔNG có cách nào để bên ngoài mở thẳng một draft:
+
+      1. Quét 4 dll lớn nhất của CapCut 9.1.0: **32 route deep-link**, toàn tính năng
+         AI / trang thương mại / anchor point. KHÔNG route nào nhận draft. Các chuỗi
+         `draft_id`, `draft_path`… chỉ là tên trường dữ liệu nội bộ, không phải route.
+      2. Không có tham số dòng lệnh nào liên quan (chỉ `--outfile`, dùng việc khác).
+      3. CapCut chạy MỘT THỂ HIỆN: đã mở sẵn rồi thì gọi `CapCut.exe <đường dẫn>`
+         lần nữa chẳng làm gì cả — đây đúng là thứ người dùng gặp.
+
+    Nên không hứa thứ làm không được. `trong_capcut=true` chỉ đưa CapCut ra trước
+    (bật lên nếu chưa chạy) để người dùng bấm tiếp một nhịp; mặc định mở thư mục."""
     d = (DRAFT_ROOT / name).resolve()
     if d.parent != DRAFT_ROOT.resolve() or not d.is_dir():   # chặn ../ đi ra ngoài
         raise HTTPException(404, "không thấy draft")
+    if trong_capcut:
+        home = assetlib.find_capcut().get("home")
+        exe = Path(home) / "Apps" / "CapCut.exe" if home else None
+        if exe and exe.is_file():
+            try:
+                subprocess.Popen([str(exe)])                 # noqa: S603 (app chạy local)
+                return {"ok": True, "cach": "capcut_front", "path": str(d)}
+            except OSError as e:
+                print(f"[open] bật CapCut hỏng ({e}) -> lùi về mở thư mục")
+        else:
+            print("[open] không thấy CapCut.exe -> lùi về mở thư mục")
     os.startfile(str(d))                                     # noqa: S606 (app chạy local)
-    return {"ok": True, "path": str(d)}
+    return {"ok": True, "cach": "thu_muc", "path": str(d)}
 
 
 @app.get("/api/draft/{name}/scan")
@@ -274,6 +297,166 @@ def api_projects():
     return {"projects": out}
 
 
+# ───────────────── DỰ ÁN cấp app (CRUD) + quy trình ─────────────────
+
+@app.get("/api/workflows")
+def api_workflows():
+    return {"workflows": projects.QUY_TRINH}
+
+
+@app.get("/api/sfx")
+def api_sfx():
+    """Danh sách SFX trong kho — để người dùng giới hạn đúng những file được dùng."""
+    import build_short_draft as _b
+    return {"files": sorted(assetlib.sfx_kho(_b.SFX_DEFAULT).keys())}
+
+
+@app.get("/api/app-projects")
+def api_app_projects(nhan_cu: bool = True):
+    """Danh sách dự án cho màn hình chính, kèm số CapCut project đã dựng."""
+    if nhan_cu:
+        projects.nhan_du_an_cu(WORK)          # thư mục có sẵn không được bỏ rơi
+    ds = projects.liet_ke()
+    for p in ds:
+        w = p.get("work_dir") or ""
+        p["so_draft"] = len(_drafts_cua_work(w)) if w else 0
+        p["so_chu_de"] = _so_chu_de(w)
+        p["da_phan_tich"] = bool(w) and (WORK / w / "topics.json").exists()
+    return {"projects": ds}
+
+
+def _drafts_cua_work(work: str) -> list:
+    """CapCut project sinh ra từ một dự án — nhận theo tiền tố '<work>_t<n>_'."""
+    if not work or not DRAFT_ROOT.exists():
+        return []
+    ra = []
+    for d in sorted(DRAFT_ROOT.iterdir()):
+        if not (d.is_dir() and d.name.startswith(f"{work}_t")
+                and (d / "draft_content.json").exists()):
+            continue
+        try:
+            phan = d.name[len(work) + 2:].split("_", 1)
+            topic = int(phan[0]); editor = phan[1] if len(phan) > 1 else "shared"
+        except (ValueError, IndexError):
+            continue
+        ra.append({"name": d.name, "topic": topic, "editor": editor,
+                   "mtime": (d / "draft_content.json").stat().st_mtime,
+                   "locked": (d / ".locked").exists(),
+                   "co_moc": (draft_diff.SNAP_DIR / f"{d.name}.json").exists()})
+    return ra
+
+
+def _so_chu_de(work: str) -> int:
+    tj = WORK / work / "topics.json" if work else None
+    if not tj or not tj.exists():
+        return 0
+    try:
+        return len(json.loads(tj.read_text(encoding="utf-8")).get("topics", []))
+    except (OSError, ValueError):
+        return 0
+
+
+@app.post("/api/app-projects")
+def api_app_project_tao(ten: str, quy_trinh: str, record_path: str = "",
+                        editor: str = "shared"):
+    """Tạo dự án. work_dir suy từ file record (nếu đã chọn) để cache/draft bám đúng chỗ."""
+    work = ""
+    if record_path:
+        import transcribe as trm
+        work = trm.slug(record_path)      # trùng với dự án khác vẫn cho — xem api_..._gan_record
+    try:
+        return projects.tao(ten, quy_trinh, record_path, work, editor)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.patch("/api/app-projects/{pid}")
+def api_app_project_sua(pid: int, body: dict):
+    try:
+        p = projects.sua(pid, **body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not p:
+        raise HTTPException(404, "không thấy dự án")
+    return p
+
+
+@app.delete("/api/app-projects/{pid}")
+def api_app_project_xoa(pid: int):
+    try:
+        return projects.xoa(pid)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/app-projects/{pid}/record")
+def api_app_project_gan_record(pid: int, path: str):
+    """Gắn file record vào dự án. CHỈ LÀM ĐƯỢC MỘT LẦN.
+
+    `work_dir` suy ra từ đây, mà draft CapCut lẫn cache đều bám theo nó — cho đổi
+    giữa chừng là dự án đang có draft bỗng trỏ sang thư mục khác."""
+    p = projects.lay(pid)
+    if not p:
+        raise HTTPException(404, "không thấy dự án")
+    if p.get("work_dir"):
+        raise HTTPException(409, f"Dự án này đã gắn record rồi ({p['work_dir']}). "
+                                 f"Muốn dùng record khác thì tạo dự án mới.")
+    src = Path(path)
+    if not src.is_file():
+        raise HTTPException(404, f"Không thấy file: {path}")
+    import transcribe as trm
+    # Record đã dùng ở dự án khác thì VẪN CHO chọn lại, nhưng phải có THƯ MỤC LÀM
+    # VIỆC RIÊNG. Dùng chung thư mục thì dự án mới thừa hưởng luôn transcript, chủ đề
+    # và video nền của dự án cũ — tức là "làm lại" mà chẳng làm lại gì, đúng thứ vô
+    # nghĩa. Mỗi dự án phân tích từ đầu thì mới ra bộ chủ đề của riêng nó.
+    goc = trm.slug(path)
+    work, cu = goc, projects.lay_theo_work(goc)
+    if cu:
+        i = 2
+        while projects.lay_theo_work(f"{goc}_{i}"):
+            i += 1
+        work = f"{goc}_{i}"
+    c = assetlib.conn()
+    c.execute("UPDATE projects SET work_dir=?, record_path=?, sua_luc=? WHERE id=?",
+              (work, str(src), time.time(), pid))
+    c.commit(); c.close()
+    ra = projects.lay(pid)
+    if cu and cu["id"] != pid:
+        ra["dung_chung"] = (f"Record này cũng đang dùng ở dự án '{cu['ten']}'. Dự án mới "
+                            f"phân tích LẠI TỪ ĐẦU trong thư mục riêng '{work}' — bóc lời "
+                            f"lại từ đầu (mất vài phút) và có bộ chủ đề của riêng nó, "
+                            f"không dính gì tới dự án kia.")
+    return ra
+
+
+@app.get("/api/app-projects/{pid}")
+def api_app_project_mot(pid: int):
+    """Toàn bộ dữ liệu cho MÀN HÌNH LÀM VIỆC của một dự án."""
+    p = projects.lay(pid)
+    if not p:
+        raise HTTPException(404, "không thấy dự án")
+    w = p.get("work_dir") or ""
+    p["drafts"] = _drafts_cua_work(w)
+    p["topics"] = []
+    tj = WORK / w / "topics.json" if w else None
+    if tj and tj.exists():
+        try:
+            t = json.loads(tj.read_text(encoding="utf-8"))
+            dtheo: dict = {}
+            for d in p["drafts"]:
+                dtheo.setdefault(d["topic"], []).append(d)
+            p["topics"] = [{"i": i + 1, "title": x.get("title", ""),
+                            "score": x.get("total_score"),
+                            "dur": round(sum(s["end_sec"] - s["start_sec"]
+                                             for s in x.get("segments", []))),
+                            "drafts": dtheo.get(i + 1, [])}
+                           for i, x in enumerate(t.get("topics", []))]
+        except (OSError, ValueError, KeyError):
+            pass
+    p["da_phan_tich"] = bool(tj and tj.exists())
+    return p
+
+
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".mp3", ".wav", ".m4a"}
 
 
@@ -287,16 +470,41 @@ def default_record_dir() -> Path:
     return home
 
 
+MAX_SAU = 4          # tầng thư mục con tối đa
+MAX_FILE = 300       # trần số file — quét cả cây rồi ffprobe từng cái là rất lâu
+
+
+def _duyet_record(d: Path, de_quy: bool):
+    """Tìm file record. Quét CẢ THƯ MỤC CON vì người dùng hay xếp record theo
+    buổi/tháng, bắt họ trỏ đúng thư mục lá là bắt bấm mò nhiều lần.
+
+    Có trần độ sâu và trần số file: trỏ nhầm vào ổ C: mà quét không giới hạn là app
+    đứng hình vài phút, không nút nào bấm được."""
+    if not de_quy:
+        return sorted([p for p in d.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXT]), False
+    ra, goc = [], len(d.parts)
+    for p in sorted(d.rglob("*")):
+        if len(ra) >= MAX_FILE:
+            return ra, True                       # còn sót -> phải BÁO, đừng cắt im lặng
+        try:
+            if p.is_file() and p.suffix.lower() in VIDEO_EXT and len(p.parts) - goc <= MAX_SAU:
+                ra.append(p)
+        except OSError:
+            continue
+    return ra, False
+
+
 @app.get("/api/browse")
-def api_browse(dir: str = ""):
+def api_browse(dir: str = "", de_quy: bool = True):
     """Liệt kê file record trong 1 thư mục (app chạy local nên duyệt thẳng ổ đĩa,
     không upload — file 2-3 tiếng vài GB không upload qua trình duyệt được)."""
     d = Path(dir) if dir else default_record_dir()
     if not d.exists() or not d.is_dir():
         raise HTTPException(404, f"Không thấy thư mục: {d}")
+    ds, cat_bot = _duyet_record(d, de_quy)
     files = []
-    for p in sorted(d.iterdir()):
-        if p.is_file() and p.suffix.lower() in VIDEO_EXT:
+    for p in ds:
+        if True:
             try:
                 info = subprocess.run(
                     ["ffprobe", "-v", "error", "-show_entries",
@@ -310,24 +518,73 @@ def api_browse(dir: str = ""):
                         except ValueError:
                             pass
                 has_v = "codec_type=video" in info
+                # Ước lượng theo tốc độ ĐO ĐƯỢC TRÊN MÁY NÀY. Trước đây chia cứng cho
+                # 30 — hệ số đo trên GPU máy dev — nên máy chạy CPU hứa "2 phút" rồi
+                # bắt ngồi 4 phút. Chưa đo lần nào thì đoán dè dặt (10x).
+                import transcribe as tr_mod
+                rtf, da_do = tr_mod.toc_do_asr()
+                try:
+                    tuong_doi = str(p.relative_to(d)).replace("\\", "/")
+                except ValueError:
+                    tuong_doi = p.name
                 files.append({
-                    "path": str(p).replace("\\", "/"), "name": p.name,
+                    "path": str(p).replace("\\", "/"),
+                    "name": p.name,
+                    "duong": tuong_doi,          # có thư mục con -> hiện để phân biệt trùng tên
                     "mb": round(p.stat().st_size / 1e6),
                     "dur_min": round(dur / 60),
-                    # đo thật trên GPU này: tầng khảo sát (batched+greedy) ~43x realtime;
-                    # chia 30 để cộng luôn thời gian tách audio 16kHz của file dài.
-                    "eta_min": max(1, round(dur / 30 / 60)),
+                    "eta_min": max(1, round(dur / rtf / 60 * 1.3)),   # +30% cho tách audio
+                    "eta_do_that": da_do,
                     "video": has_v,
                 })
             except (OSError, subprocess.SubprocessError):
                 pass
-    return {"dir": str(d).replace("\\", "/"), "files": files}
+    return {"dir": str(d).replace("\\", "/"), "files": files,
+            "de_quy": de_quy, "cat_bot": cat_bot, "max_file": MAX_FILE}
+
+
+@app.post("/api/pick")
+def api_pick(kieu: str = "thu_muc"):
+    """Mở hộp thoại chọn file/thư mục CỦA WINDOWS.
+
+    Bắt người dùng chép tay đường dẫn vào ô text là kiểu bắt làm việc không công —
+    và gõ sai một ký tự thì báo 'không thấy thư mục' mà không biết sai chỗ nào.
+    App chạy local nên mở được hộp thoại thật; dùng tkinter có sẵn trong Python,
+    không thêm phụ thuộc.
+
+    Chạy trong TIẾN TRÌNH RIÊNG: tkinter phải ở luồng chính, mà đây là web server
+    đa luồng — gọi thẳng là treo cả app."""
+    if kieu not in ("thu_muc", "file"):
+        raise HTTPException(400, "kieu phải là 'thu_muc' hoặc 'file'")
+    ma = (
+        "import tkinter as tk\n"
+        "from tkinter import filedialog\n"
+        "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True)\n"
+        + ("p = filedialog.askdirectory(title='Chọn thư mục chứa record')\n"
+           if kieu == "thu_muc" else
+           "p = filedialog.askopenfilename(title='Chọn file record',"
+           " filetypes=[('Video/Audio','*.mp4 *.mov *.mkv *.avi *.m4v *.webm *.mp3 *.wav *.m4a'),"
+           " ('Tất cả','*.*')])\n")
+        + "print(p or '')\n"
+    )
+    try:
+        r = subprocess.run([sys.executable, "-c", ma], capture_output=True,
+                           text=True, timeout=300)
+    except subprocess.SubprocessError as e:
+        raise HTTPException(500, f"Không mở được hộp thoại: {e}")
+    duong = (r.stdout or "").strip().splitlines()
+    duong = duong[-1].strip() if duong else ""
+    return {"path": duong, "huy": not duong}
 
 
 @app.post("/api/ingest")
 def api_ingest(path: str, asr: str = "small", model: str = "gemini-2.5-flash",
-               device: str = "cuda"):
-    """LUỒNG ĐẦU: record thô -> transcript -> trích chủ đề -> hiện ở tab Dự án."""
+               device: str = "cuda", work: str = ""):
+    """LUỒNG ĐẦU: record thô -> transcript -> trích chủ đề -> hiện ở màn hình dự án.
+
+    `work` = thư mục làm việc của DỰ ÁN gọi tới. Không truyền thì suy từ tên file như
+    cũ — nhưng dự án thứ hai dùng lại cùng record mà suy từ tên file là ghi đè lên
+    phân tích của dự án thứ nhất."""
     src = Path(path)
     if not src.exists():
         raise HTTPException(404, f"Không thấy file: {path}")
@@ -339,8 +596,8 @@ def api_ingest(path: str, asr: str = "small", model: str = "gemini-2.5-flash",
             print(f"[1/2] Khảo sát nhanh '{src.name}' (model {asr}, {device})...")
             # TẦNG 1: batched + greedy, không mốc từ -> đo được ~43x realtime
             # (cách cũ 8.5x). Mốc từng từ để tầng 2 lo, chỉ trên đoạn được chọn.
-            tr.transcribe_survey(str(src), asr, device)
-            wd = tr.work_dir(str(src))
+            tr.transcribe_survey(str(src), asr, device, ten=work)
+            wd = tr.work_dir(str(src), work)
             print(f"[2/2] Gemini trích chủ đề ({model})...")
             prof = str(assetlib.ROOT / "shorts" / "profiles" / "meeting.yaml")
             tp.extract_topics(wd, prof, model, False)

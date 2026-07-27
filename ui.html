@@ -277,6 +277,57 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
 .neg{color:var(--color-danger);font-weight:var(--font-weight-bold)}
 
 /* ══════════════════ EMPTY / SKELETON ══════════════════ */
+/* ══════════════════ HOME ══════════════════
+   Bố cục lấy ý từ màn hình chính CapCut: một nút TẠO nổi bật hẳn, bên dưới là các
+   quy trình, dưới nữa là dự án đã có. Nhưng KHÔNG bê gradient/đổ bóng của CapCut về
+   — luật 2 của docs/UI.md: bề mặt phẳng, phân tách bằng viền 2px. */
+.hero{border:var(--border-w) solid var(--color-eager-green);background:var(--color-storybook-green);
+      border-radius:var(--radius);padding:var(--spacing-32);text-align:center;margin-bottom:var(--spacing-24)}
+.hero h3{font-family:var(--font-feather);font-size:var(--text-heading-sm);font-weight:800;
+         color:var(--color-charcoal);margin-bottom:6px}
+.hero p{color:var(--color-pencil-gray);font-size:var(--text-caption);margin-bottom:var(--element-gap)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:var(--element-gap)}
+.tile{text-align:left;width:100%;background:var(--color-paper-white);cursor:pointer;
+      border:var(--border-w) solid var(--color-hairline);border-radius:var(--radius);
+      padding:var(--card-padding);font-family:var(--font-body)}
+.tile:hover:not(:disabled){border-color:var(--color-eager-green)}
+.tile .ic{font-size:24px;line-height:1;margin-bottom:8px}
+.tile b{display:block;color:var(--color-charcoal);font-size:var(--text-subheading);margin-bottom:4px}
+.tile .l{color:var(--color-pencil-gray);font-size:var(--text-caption);line-height:var(--leading-caption)}
+/* Quy trình chưa ra mắt: LÀM MỜ chứ không ẩn. Người dùng cần thấy app sẽ đi tới đâu,
+   và biết thứ mình đang tìm là chưa có — thay vì đi tìm mòn mỏi trong menu. */
+.tile:disabled{cursor:not-allowed;background:#fafafa;border-style:dashed}
+.tile:disabled b, .tile:disabled .ic{opacity:.55}
+
+/* Thẻ dự án / CapCut project */
+.plist{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:var(--element-gap)}
+.pcard{background:var(--color-paper-white);border:var(--border-w) solid var(--color-hairline);
+       border-radius:var(--radius);padding:var(--card-padding);text-align:left;width:100%;
+       font-family:var(--font-body);cursor:pointer}
+.pcard:hover{border-color:var(--color-spark-blue)}
+.pcard b{display:block;color:var(--color-charcoal);font-size:var(--text-subheading);
+         margin-bottom:4px;word-break:break-word}
+.pcard .l{color:var(--color-pencil-gray);font-size:var(--text-caption)}
+.pcard .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+
+/* ══════════════════ THANH GẠT chế độ (Thường | Agent chat) ══════════════════
+   Trước đây Agent là một mục trong sidebar, nằm lẫn với các khu vực — mà nó không
+   phải "khu vực", nó là CHẾ ĐỘ nhìn cùng dữ liệu theo cách khác. Thanh gạt nói đúng
+   quan hệ đó, và luôn thấy được. */
+.modesw{display:flex;gap:4px;padding:4px;margin-bottom:var(--element-gap);
+        background:var(--color-paper-white);border:var(--border-w) solid var(--color-hairline);
+        border-radius:var(--radius)}
+.modesw button{flex:1;border:0;background:transparent;border-radius:8px;cursor:pointer;
+        font-family:var(--font-body);font-weight:var(--font-weight-bold);font-size:var(--text-caption);
+        color:var(--color-pencil-gray);padding:7px 6px;display:flex;align-items:center;
+        justify-content:center;gap:6px}
+.modesw button.on{background:var(--color-storybook-green);color:var(--color-charcoal)}
+.modesw button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;
+        stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.app.rail .modesw{flex-direction:column}
+.app.rail .modesw button span{display:none}
+
 .empty{border:var(--border-w) dashed var(--color-faded-gray);border-radius:var(--radius);
        padding:var(--spacing-32);text-align:center;color:var(--color-pencil-gray)}
 .empty b{display:block;color:var(--color-charcoal);font-size:var(--text-subheading);margin-bottom:6px}
@@ -342,18 +393,25 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
   </div>
 
   <div class="scroll">
+    <div class="modesw" role="tablist" aria-label="Chế độ">
+      <button id="mManualBtn" class="on" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Thường</span></button>
+      <button id="mAgent" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.8-.9L3 20.5l1.5-4.2a8.4 8.4 0 0 1 3.6-11.6 8.6 8.6 0 0 1 12.9 6.8z"/></svg><span>Agent chat</span></button>
+    </div>
+
+    <!-- Gói cả hai nhóm điều hướng vào một khối: chế độ Agent ẩn nguyên khối này.
+         Để lộ "Khu vực"/"Hệ thống" trong lúc chat là nói dối về trạng thái — bấm vào
+         là văng khỏi cuộc trò chuyện, mà không mục nào đang sáng cả. -->
+    <div id="navAreas">
     <div class="grp">Khu vực</div>
     <nav id="navbar" role="tablist" aria-label="Khu vực làm việc">
-      <button data-t="over" class="on" role="tab" aria-controls="over" aria-selected="true">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tổng quan</span></button>
-      <button data-t="proj" role="tab" aria-controls="proj" aria-selected="false">
-        <svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="M2 16l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>Dự án</span></button>
-      <button data-t="draft" role="tab" aria-controls="draft" aria-selected="false">
-        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 10h20M2 14h20"/></svg><span>Draft</span></button>
-      <button data-t="audio" role="tab" aria-controls="audio" aria-selected="false">
-        <svg viewBox="0 0 24 24"><path d="M3 12h3l3-7 3 14 3-10 2 3h4"/></svg><span>Âm thanh</span></button>
+      <button data-t="home" class="on" role="tab" aria-controls="home" aria-selected="true">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span>Home</span></button>
+      <button data-t="over" role="tab" aria-controls="over" aria-selected="false">
+        <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 10h20M2 14h20"/></svg><span>Tổng quan</span></button>
       <button data-t="lib" role="tab" aria-controls="lib" aria-selected="false">
-        <svg viewBox="0 0 24 24"><path d="M21 8v12H3V8"/><rect x="1" y="3" width="22" height="5"/><path d="M10 12h4"/></svg><span>Kho tài nguyên</span></button>
+        <svg viewBox="0 0 24 24"><path d="M21 8v12H3V8"/><rect x="1" y="3" width="22" height="5"/><path d="M10 12h4"/></svg><span>Quản lý tài nguyên</span></button>
     </nav>
 
     <div class="grp">Hệ thống</div>
@@ -361,11 +419,9 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
       <button data-t="setup" role="tab" aria-controls="setup" aria-selected="false">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg><span>Cài đặt</span></button>
     </nav>
+    </div>
 
-    <div class="grp">Trợ lý</div>
     <nav>
-      <button id="mAgent">
-        <svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.8-.9L3 20.5l1.5-4.2a8.4 8.4 0 0 1 3.6-11.6 8.6 8.6 0 0 1 12.9 6.8z"/></svg><span>Agent chat</span></button>
       <button id="btnNewChat" hidden>
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Trò chuyện mới</span></button>
     </nav>
@@ -385,10 +441,9 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
     <p id="pgSub"></p>
   </div>
   <main>
-    <section id="over" role="tabpanel"></section>
-    <section id="proj" role="tabpanel" hidden></section>
-    <section id="draft" role="tabpanel" hidden></section>
-    <section id="audio" role="tabpanel" hidden></section>
+    <section id="home" role="tabpanel"></section>
+    <section id="over" role="tabpanel" hidden></section>
+    <section id="work" role="tabpanel" hidden></section>
     <section id="lib" role="tabpanel" hidden></section>
     <section id="setup" role="tabpanel" hidden></section>
     <section id="agent" hidden>
@@ -562,32 +617,38 @@ const emptyBox = (title, hint) => `<div class="empty"><b>${esc(title)}</b>${esc(
 /* ---------- chuyển chế độ / tab ----------
    Tab và chế độ được NHỚ: người dùng ở tab Âm thanh cả buổi, mỗi lần Ctrl+F5
    lại bị ném về tab Dự án là mất mạch việc. */
-const SECTS = ['over','proj','draft','audio','lib','setup'];
-const LOADERS = {over:loadOver, proj:loadProj, draft:loadDrafts, audio:loadAudio,
-                 lib:loadLib, setup:loadSetup};
+const SECTS = ['home','over','work','lib','setup'];
+/* 'work' (màn hình làm việc của một dự án) KHÔNG có mục trên sidebar: nó luôn đi
+   kèm một dự án cụ thể, vào bằng cách bấm thẻ ở Home. Đặt nó thành mục điều hướng
+   thì lúc chưa chọn dự án nào sẽ chẳng biết hiện cái gì. */
+const LOADERS = {home:loadHome, over:loadOver, work:loadWork, lib:loadLib, setup:loadSetup};
 const NUT_TAB = () => document.querySelectorAll('.side button[data-t]');
 /* Tiêu đề trang nằm ở một chỗ: sidebar chỉ còn nhãn ngắn, câu giải thích "khu vực
    này để làm gì" chuyển lên đầu trang — người mới mở app đọc là hiểu ngay. */
 const PAGES = {
-  over: ['Tổng quan', 'Việc đang dở và tài nguyên CapCut có sẵn trên máy này — số liệu thật.'],
-  proj: ['Dự án', 'Nạp record, chọn chủ đề, dựng draft theo gu từng editor.'],
-  draft:['Draft', 'Chụp mốc → editor sửa trong CapCut → đồng bộ về kho để app học gu.'],
-  audio:['Âm thanh', 'Đo LUFS từng nguồn rồi cân bằng theo chuẩn EBU R128.'],
-  lib:  ['Kho tài nguyên', 'Gu từng editor và cài tài nguyên còn thiếu vào CapCut.'],
+  home: ['Home', 'Chọn một quy trình để bắt đầu dự án mới, hoặc mở lại dự án đang làm dở.'],
+  over: ['Tổng quan', 'Mọi dự án CapCut đã dựng, và những chủ đề còn chờ dựng draft.'],
+  work: ['Màn hình làm việc', 'Nạp record, chọn tài nguyên, duyệt chủ đề, dựng draft.'],
+  lib:  ['Quản lý tài nguyên', 'Gu từng editor, kiểm kê tài nguyên CapCut trên máy, cài thứ còn thiếu.'],
   setup:['Cài đặt', 'API key để app chạy được. Lưu vào máy bạn, áp dụng ngay, không cần khởi động lại.'],
   agent:['Agent chat', 'Ra lệnh bằng tiếng Việt — agent tự chọn việc, tự hỏi khi thiếu thông tin, và nhớ ngữ cảnh.'],
 };
 function setPage(k){ $('#pgTitle').textContent = PAGES[k][0]; $('#pgSub').textContent = PAGES[k][1]; }
-let TAB = PREF.get('tab', 'over');
+let TAB = PREF.get('tab', 'home');
 function showTab(t){
-  if(!LOADERS[t]) t = 'over';
-  TAB = t; PREF.set('tab', t); PREF.set('agent', false);
+  if(!LOADERS[t]) t = 'home';
+  /* 'work' không lưu vào PREF: mở lại app mà rơi thẳng vào màn hình làm việc của
+     một dự án có thể đã bị xoá thì rất khó hiểu. Về Home là điểm xuất phát an toàn. */
+  TAB = t; if(t !== 'work') PREF.set('tab', t);
+  PREF.set('agent', false);
   NUT_TAB().forEach(x => {                      // gồm cả mục Cài đặt ở nhóm Hệ thống
     const on = x.dataset.t === t;
     x.classList.toggle('on', on); x.setAttribute('aria-selected', on);
   });
-  $('#mAgent').classList.remove('on');
+  $('#mAgent').classList.remove('on'); $('#mAgent').setAttribute('aria-selected', false);
+  $('#mManualBtn').classList.add('on'); $('#mManualBtn').setAttribute('aria-selected', true);
   $('#agent').hidden = true;
+  $('#navAreas').hidden = false;
   $('#btnNewChat').hidden = true;
   $('#chatList').innerHTML = '';
   $('#mManual').style.display = 'none';
@@ -597,10 +658,12 @@ function showTab(t){
 }
 NUT_TAB().forEach(b => b.onclick = () => showTab(b.dataset.t));
 function setMode(agentMode){
-  if(!agentMode) return showTab(TAB);
+  if(!agentMode) return showTab(TAB === 'work' ? 'home' : TAB);
   PREF.set('agent', true);
   NUT_TAB().forEach(x => { x.classList.remove('on'); x.setAttribute('aria-selected', false); });
-  $('#mAgent').classList.add('on');
+  $('#mAgent').classList.add('on'); $('#mAgent').setAttribute('aria-selected', true);
+  $('#mManualBtn').classList.remove('on'); $('#mManualBtn').setAttribute('aria-selected', false);
+  $('#navAreas').hidden = true;          // chat thì chỉ còn danh sách trò chuyện
   $('#btnNewChat').hidden = false;
   $('#mManual').style.display = '';
   SECTS.forEach(t => $('#'+t).hidden = true);
@@ -608,9 +671,64 @@ function setMode(agentMode){
   setPage('agent');
   loadChat(); loadChatList();
 }
-$('#mManual').onclick = ()=>setMode(false);
-$('#mAgent').onclick  = ()=>setMode(true);
+$('#mManual').onclick    = ()=>setMode(false);
+$('#mManualBtn').onclick = ()=>setMode(false);
+$('#mAgent').onclick     = ()=>setMode(true);
 ACTIONS.retry = d => RETRY[d.sel] && RETRY[d.sel]();
+
+/* Hộp NHẬP CHỮ. docs/UI.md nói ưu tiên cho chọn bằng nút thay vì bắt gõ — nhưng
+   đặt tên dự án thì không có cách nào khác. Vẫn đi qua veil chung để giữ Esc,
+   bấm-ra-ngoài, và trả tiêu điểm về đúng nút vừa bấm. */
+function promptBox({title, body='', value='', ok='Lưu'}){
+  return new Promise(resolve=>{
+    $('#mdTitle').textContent = title;
+    $('#mdBody').innerHTML = `${body?`<div style="margin-bottom:10px">${esc(body)}</div>`:''}
+      <input id="mdInput" style="width:100%" value="${esc(value)}">`;
+    const box = $('#mdActs'); box.innerHTML = '';
+    MODAL_CLOSE = () => resolve(null);
+    const pick = v => { MODAL_CLOSE = null; closeModal(); resolve(v); };
+    const inp = $('#mdInput');
+    const bOk = document.createElement('button');
+    bOk.className = 'btn'; bOk.textContent = ok;
+    bOk.onclick = () => pick(inp.value.trim() || null);
+    const bHuy = document.createElement('button');
+    bHuy.className = 'btn ghost'; bHuy.textContent = 'Huỷ'; bHuy.onclick = () => pick(null);
+    box.appendChild(bOk); box.appendChild(bHuy);
+    inp.onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); bOk.click(); } };
+    openVeil();
+    setTimeout(()=>{ inp.focus(); inp.select(); }, 30);
+  });
+}
+
+/* ---------- hành động của Home / màn hình làm việc ---------- */
+ACTIONS.wf        = d => taoDuAn(d.ma);
+ACTIONS['open-proj'] = d => moDuAn(+d.id);
+ACTIONS['ve-home']   = () => showTab('home');
+ACTIONS['rename-proj'] = async d => {
+  const ten = await promptBox({title:'Đổi tên dự án',
+    body:'Chỉ đổi nhãn hiển thị — thư mục làm việc và draft đã dựng không đụng tới.',
+    value:d.ten});
+  if(!ten) return;
+  try{
+    await api(`/api/app-projects/${d.id}`, {method:'PATCH',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({ten})});
+    toast('Đã đổi tên');
+    guard('#'+TAB, LOADERS[TAB]);
+  }catch(e){ toast(String(e), true); }
+};
+ACTIONS['del-proj'] = async d => {
+  /* Nói rõ CÁI GÌ MẤT và CÁI GÌ CÒN. Xoá mà người dùng tưởng mất luôn draft đã dựng
+     thì họ sẽ không dám bấm; tưởng chỉ ẩn đi mà mất thật thì còn tệ hơn. */
+  if(!await confirmBox('Xoá dự án khỏi danh sách?',
+      `"${d.ten}" sẽ biến mất khỏi Home.\n\n`
+      + 'GIỮ NGUYÊN: thư mục làm việc, transcript, và mọi dự án CapCut đã dựng.\n'
+      + 'Muốn xoá hẳn dữ liệu thì xoá thủ công trong thư mục shorts/work/.')) return;
+  try{
+    await api(`/api/app-projects/${d.id}`, {method:'DELETE'});
+    toast('Đã xoá khỏi danh sách');
+    if(TAB === 'work'){ PROJ_ID = null; showTab('home'); } else guard('#'+TAB, LOADERS[TAB]);
+  }catch(e){ toast(String(e), true); }
+};
 
 /* Thu gọn sidebar: máy dựng hay chạy CapCut cạnh app, ai cũng cần thêm bề ngang */
 function setRail(on){ $('#app').classList.toggle('rail', on); PREF.set('rail', on); }
@@ -664,23 +782,19 @@ async function loadSetup(){
 const MB = n => `${((n||0)/1e6).toFixed(0)} MB`;
 const KIND_SHORT = ['sticker','hiệu ứng chữ','mẫu chữ','transition','hiệu ứng','filter'];
 let INV_KIND = PREF.get('invKind', '');
-async function loadOver(){
-  const box = $('#over'); box.innerHTML = skeleton(4);
+/* Kiểm kê tài nguyên CapCut ĐÃ CHUYỂN từ Tổng quan sang Quản lý tài nguyên: nó nói
+   về những gì máy đang có, không phải về việc đang dở — để ở Tổng quan thì trang đó
+   vừa kể việc vừa kể kho, không có tiêu điểm. */
+async function loadInv(){
+  const box = $('#invBox'); if(!box) return;
+  box.innerHTML = skeleton(4);
   const [ov, inv] = await Promise.all([api('/api/overview'),
     api('/api/inventory?used=no&limit=40&kind=' + encodeURIComponent(KIND_SHORT.join(',')))]);
-  const s = inv.stats, td = ov.todo;
+  const s = inv.stats;
   const chuaQuet = !s.scanned_at;
   const card = (n, l, cls, act) => `<div class="card"${act?` data-act="${act}" style="cursor:pointer"`:''}>
       <div class="n ${cls||''}">${n}</div><div class="l">${l}</div></div>`;
   box.innerHTML = `
-    <h2>Việc cần làm</h2>
-    <div class="cards">
-      ${card(td.chua_dung, 'chủ đề chưa dựng draft', td.chua_dung?'':'good', 'goProj')}
-      ${card(td.chua_chup_moc, 'draft chưa chụp mốc — chưa học được gì', td.chua_chup_moc?'bad':'good', 'goDraft')}
-      ${card(td.dang_mo_trong_capcut, 'draft đang mở trong CapCut', td.dang_mo_trong_capcut?'bad':'good', 'goDraft')}
-      ${card(ov.projects, `dự án · ${ov.topics} chủ đề · ${ov.built} đã dựng`)}
-    </div>
-
     <h2>Tài nguyên CapCut có sẵn trên máy này</h2>
     ${chuaQuet ? emptyBox('Chưa kiểm kê lần nào',
         'Bấm "Quét tài nguyên" để xem máy này đang có sẵn những gì — mất khoảng 15 giây.')
@@ -725,7 +839,7 @@ async function loadOver(){
     try{
       const r = await api('/api/inventory/scan', {method:'POST'});
       toast('Đang kiểm kê tài nguyên trên máy…');
-      JOB_DONE_CB[r.job] = () => { if(!$('#over').hidden) guard('#over', loadOver); };
+      JOB_DONE_CB[r.job] = () => { if(!$('#lib').hidden) loadInv(); };
       startPolling();
     }catch(e){ toast(String(e), true); }
   });
@@ -817,7 +931,7 @@ async function cleanBox(){
           const r = await api('/api/cleanup/quarantine', {method:'POST',
             headers:{'Content-Type':'application/json'}, body: JSON.stringify({rids})});
           toast('Đang dọn…'); CLEAN_SEL.clear();
-          JOB_DONE_CB[r.job] = () => { if(!$('#over').hidden) guard('#over', loadOver); };
+          JOB_DONE_CB[r.job] = () => { if(!$('#lib').hidden) loadInv(); };
           startPolling();
         }catch(e){ toast(String(e), true); }
       });
@@ -832,7 +946,7 @@ async function cleanBox(){
       await busy(b, 'Đang dọn…', async () => {
         try{
           const r = await api('/api/cleanup/quarantine?kinds=' + encodeURIComponent(CLEAN_KINDS), {method:'POST'});
-          toast('Đang dọn…'); JOB_DONE_CB[r.job] = () => { if(!$('#over').hidden) guard('#over', loadOver); };
+          toast('Đang dọn…'); JOB_DONE_CB[r.job] = () => { if(!$('#lib').hidden) loadInv(); };
           startPolling();
         }catch(e){ toast(String(e), true); }
       });
@@ -841,7 +955,7 @@ async function cleanBox(){
 }
 ACTIONS.cleanUndo = (d, el) => busy(el, 'Đang trả…', async () => {
   try{ const r = await api(`/api/cleanup/undo?batch=${encodeURIComponent(d.batch)}`, {method:'POST'});
-       toast(`Đã trả ${r.restored} gói về CapCut`); guard('#over', loadOver); }
+       toast(`Đã trả ${r.restored} gói về CapCut`); loadInv(); }
   catch(e){ toast(String(e), true); }
 });
 ACTIONS.cleanPurge = async (d, el) => {
@@ -851,7 +965,7 @@ ACTIONS.cleanPurge = async (d, el) => {
     actions:[{label:'Xoá hẳn', value:true, style:'danger'}, {label:'Giữ lại', value:false, style:'ghost'}]})) return;
   await busy(el, 'Đang xoá…', async () => {
     try{ const r = await api(`/api/cleanup/purge?batch=${encodeURIComponent(d.batch)}`, {method:'POST'});
-         toast(`Đã xoá hẳn ${r.purged} gói · giải phóng ${MB(r.freed)}`); guard('#over', loadOver); }
+         toast(`Đã xoá hẳn ${r.purged} gói · giải phóng ${MB(r.freed)}`); loadInv(); }
     catch(e){ toast(String(e), true); }
   });
 };
@@ -881,8 +995,64 @@ async function invRows(pre){
       : emptyBox('Không còn gói nào chưa dùng ở loại này', 'Đổi loại khác để xem tiếp.');
   }catch(e){ box.innerHTML = `<p class="neg">${esc(e)}</p>`; }
 }
-ACTIONS.goProj  = () => showTab('proj');
-ACTIONS.goDraft = () => showTab('draft');
+ACTIONS.goProj  = () => showTab('home');
+ACTIONS.goDraft = () => showTab('over');
+
+/* Bấm THẺ = mở THƯ MỤC draft (việc chắc chắn làm được).
+   CapCut KHÔNG cho bên ngoài mở thẳng một draft — đã đo: 32 route deep-link không
+   route nào nhận draft, không tham số dòng lệnh nào, và CapCut chạy một thể hiện nên
+   gọi lại kèm đường dẫn là vô tác dụng. Nút "Mở CapCut" chỉ đưa app ra trước. */
+ACTIONS['open-capcut'] = async (d, el) => {
+  try{
+    const r = await api(`/api/draft/${encodeURIComponent(d.name)}/open`, {method:'POST'});
+    toast('Đã mở thư mục draft');
+  }catch(e){ toast(String(e), true); }
+};
+ACTIONS['bat-capcut'] = async (d, el) => {
+  try{
+    const r = await api(`/api/draft/${encodeURIComponent(d.name)}/open?trong_capcut=true`, {method:'POST'});
+    toast(r.cach === 'capcut_front'
+      ? `Đã bật CapCut — chọn "${d.name}" trong danh sách dự án`
+      : 'Không thấy CapCut — đã mở thư mục draft thay thế');
+  }catch(e){ toast(String(e), true); }
+};
+
+/* Chọn ĐÚNG những file SFX được phép dùng. Để trống = cả kho (hành vi cũ), nên
+   người dùng không bắt buộc phải quan tâm tới màn này. */
+ACTIONS['chon-sfx'] = async () => {
+  let kho;
+  try{ kho = await api('/api/sfx'); }catch(e){ return toast(String(e), true); }
+  const dangChon = new Set((PROJ && PROJ.cau_hinh.chon.sfx) || []);
+  $('#mdTitle').textContent = 'Chọn SFX được phép dùng';
+  $('#mdBody').innerHTML = `
+    <div style="margin-bottom:10px">Không tích gì = <b>dùng cả kho ${kho.files.length} file</b>.
+      Tích để giới hạn lại — AI chỉ được chọn trong số bạn tích.</div>
+    <div style="max-height:46vh;overflow:auto;text-align:left">
+      ${kho.files.map(f=>`<label class="row" style="gap:8px;margin:0 0 6px">
+        <input type="checkbox" class="sfxPick" value="${esc(f)}" ${dangChon.has(f)?'checked':''}>
+        <span class="small">${esc(f)}</span></label>`).join('')}
+    </div>`;
+  const box = $('#mdActs'); box.innerHTML = '';
+  const luu = document.createElement('button');
+  luu.className = 'btn'; luu.textContent = 'Lưu lựa chọn';
+  luu.onclick = async () => {
+    const chon = [...document.querySelectorAll('.sfxPick:checked')].map(x=>x.value);
+    MODAL_CLOSE = null; closeModal();
+    try{
+      await api(`/api/app-projects/${PROJ_ID}`, {method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({cau_hinh: {lop: PROJ.cau_hinh.lop, chon: {...PROJ.cau_hinh.chon, sfx: chon}}})});
+      toast(chon.length ? `Giới hạn còn ${chon.length} SFX` : 'Dùng cả kho SFX');
+      guard('#work', loadWork);
+    }catch(e){ toast(String(e), true); }
+  };
+  const huy = document.createElement('button');
+  huy.className = 'btn ghost'; huy.textContent = 'Huỷ';
+  huy.onclick = () => { MODAL_CLOSE = null; closeModal(); };
+  box.appendChild(luu); box.appendChild(huy);
+  MODAL_CLOSE = () => {};
+  openVeil();
+};
 
 /* ══════════════════ TAB: DỰ ÁN (luồng chính) ══════════════════ */
 let JOB_TIMER=null, PROJ=null;
@@ -892,75 +1062,256 @@ const vnTime = ms => {
   const y = d.getFullYear() !== new Date().getFullYear() ? '/'+d.getFullYear() : '';
   return `${p(d.getDate())}/${p(d.getMonth()+1)}${y} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
-async function loadProj(){
-  const box = $('#proj'); box.innerHTML = skeleton(3);
-  const [d, ed] = await Promise.all([api('/api/projects'), api('/api/editors')]);
-  PROJ = d;
-  const noKey = !ed.keys.gemini || !ed.keys.pexels;
+/* ══════════════════ TAB: HOME ══════════════════
+   Điểm xuất phát: chọn QUY TRÌNH rồi mới có dự án. Trước đây app nhảy thẳng vào
+   "thêm record mới" — chỉ đúng khi app làm đúng một loại video. Giờ có nhiều quy
+   trình nên phải hỏi trước, và người dùng thấy được app sẽ đi tới đâu. */
+let WF = [];
+async function loadHome(){
+  const box = $('#home'); box.innerHTML = skeleton(2);
+  const [w, d] = await Promise.all([api('/api/workflows'), api('/api/app-projects')]);
+  WF = w.workflows;
+  const sanSang = WF.filter(x => x.san_sang);
+  box.innerHTML = `
+    <div class="hero">
+      <h3>Bắt đầu một dự án mới</h3>
+      <p>Mỗi dự án là một buổi ghi hình — và đẻ ra nhiều dự án CapCut sửa được.</p>
+      <button class="btn" id="btnCreate">+ Tạo dự án</button>
+    </div>
+
+    <h2>Quy trình</h2>
+    <div class="tiles" style="margin-bottom:var(--spacing-24)">
+      ${WF.map(x=>`
+        <button class="tile" data-act="wf" data-ma="${esc(x.ma)}" ${x.san_sang?'':'disabled title="Quy trình này chưa ra mắt"'}>
+          <div class="ic">${esc(x.icon)}</div>
+          <b>${esc(x.ten)} ${x.san_sang?'':'<span class="tag">sắp có</span>'}</b>
+          <div class="l">${esc(x.mo_ta)}</div>
+        </button>`).join('')}
+    </div>
+
+    <h2>Dự án của bạn</h2>
+    ${d.projects.length ? `<div class="plist">${d.projects.map(p=>`
+      <div class="pcard">
+        <b>${esc(p.quy_trinh_icon)} ${esc(p.ten)}</b>
+        <div class="l">${esc(p.quy_trinh_ten)}</div>
+        <div class="l" style="margin-top:6px">
+          ${p.work_dir ? `${p.so_chu_de} chủ đề · <b>${p.so_draft}</b> dự án CapCut`
+                       : '<span class="neg">chưa gắn record</span>'}
+        </div>
+        <div class="acts">
+          <button class="btn ghost sm" data-act="open-proj" data-id="${p.id}">Mở</button>
+          <button class="btn ghost sm" data-act="rename-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Đổi tên</button>
+          <button class="btn danger sm" data-act="del-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Xoá</button>
+        </div>
+      </div>`).join('')}</div>`
+      : emptyBox('Chưa có dự án nào', 'Bấm "Tạo dự án" ở trên, chọn quy trình rồi nạp file record.')}
+
+    <h2>Tiến trình</h2>
+    <div id="jobs"></div>`;
+  $('#btnCreate').onclick = () => chonQuyTrinh();
+  pollJobs();
+}
+
+async function chonQuyTrinh(){
+  const sanSang = WF.filter(x => x.san_sang);
+  const ma = await modal({
+    title: 'Chọn quy trình',
+    body: 'Mỗi quy trình là một cách dựng video khác nhau. Chọn cái hợp với thứ bạn đang có.',
+    actions: sanSang.map(x => ({label: `${x.icon} ${x.ten}`, value: x.ma}))
+                    .concat([{label:'Huỷ', value:null, style:'ghost'}]),
+  });
+  if(ma) taoDuAn(ma);
+}
+
+async function taoDuAn(ma){
+  const wf = WF.find(x => x.ma === ma);
+  try{
+    const p = await api(`/api/app-projects?ten=${encodeURIComponent('Dự án ' + vnTime(Date.now()))}`
+                        + `&quy_trinh=${encodeURIComponent(ma)}`, {method:'POST'});
+    toast(`Đã tạo dự án theo ${wf ? wf.ten : ma}`);
+    moDuAn(p.id);
+  }catch(e){ toast(String(e), true); }
+}
+
+/* ══════════════════ MÀN HÌNH LÀM VIỆC của một dự án ══════════════════ */
+let PROJ_ID = null;
+function moDuAn(id){ PROJ_ID = id; showTab('work'); }
+
+async function loadWork(){
+  const box = $('#work'); box.innerHTML = skeleton(3);
+  if(!PROJ_ID){ box.innerHTML = emptyBox('Chưa chọn dự án', 'Về Home rồi mở một dự án.'); return; }
+  const [p, ed] = await Promise.all([api('/api/app-projects/'+PROJ_ID), api('/api/editors')]);
+  PROJ = p;
+  $('#pgTitle').textContent = p.ten;
+  $('#pgSub').textContent = `${p.quy_trinh_ten} · ${p.work_dir ? p.work_dir : 'chưa gắn record'}`;
   const curEd = PREF.get('editor', ''), curAsr = PREF.get('asr', 'small');
   const opt = (v, label, sel) => `<option value="${esc(v)}" ${v===sel?'selected':''}>${esc(label)}</option>`;
+  const lop = p.cau_hinh.lop, chon = p.cau_hinh.chon;
+  const LOP_TEN = {caption:'Caption', hook:'Hook mở đầu', sfx:'Hiệu ứng tiếng (SFX)',
+                   emoji:'Emoji', broll:'B-roll stock', card_chot:'Card chốt / CTA',
+                   nhac_nen:'Nhạc nền'};
+
   box.innerHTML = `
-    <h2>Thêm record mới</h2>
-    <div class="row">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <a class="link small" data-act="ve-home">← Về Home</a>
+      <div class="row" style="gap:6px">
+        <button class="btn ghost sm" data-act="rename-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Đổi tên</button>
+        <button class="btn danger sm" data-act="del-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Xoá dự án</button>
+      </div>
+    </div>
+
+    <h2>1 · File record</h2>
+    ${p.work_dir ? `<div class="card" style="margin-bottom:var(--spacing-24)">
+        <div class="l">Đã gắn — không đổi được nữa vì draft và cache đều bám theo nó.</div>
+        <div class="mono" style="margin-top:6px;word-break:break-all">${esc(p.record_path||p.work_dir)}</div>
+      </div>`
+     : `<div class="row">
       <label class="fld"><span>Thư mục</span>
         <input id="dirIn" style="width:250px" value="${esc(PREF.get('dir',''))}" placeholder="đang lấy mặc định…"></label>
-      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét</button></label>
-      <label class="fld"><span>File record</span>
-        <select id="fileSel" style="min-width:300px"><option>— bấm Quét —</option></select></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickDir" title="Mở hộp thoại chọn thư mục của Windows">Chọn thư mục…</button></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét lại</button></label>
+    </div>
+    <div class="row">
+      <label class="fld"><span>File record <span class="muted small">(quét cả thư mục con)</span></span>
+        <select id="fileSel" style="min-width:360px"><option>— đang quét —</option></select></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickFile" title="Chọn thẳng một file bất kỳ trên máy">Chọn file…</button></label>
+      <label class="fld"><span>&nbsp;</span><button class="btn" id="btnGanRecord">Dùng file này</button></label>
+    </div>
+    <p class="muted small" id="scanNote"></p>`}
+
+    <h2>2 · Tài nguyên đưa vào draft</h2>
+    <div class="card" style="margin-bottom:var(--spacing-24)">
+      <div class="l" style="margin-bottom:10px">Tắt lớp nào thì draft không có lớp đó. Trong lớp đã bật,
+        bạn có thể chỉ định đúng những file được phép dùng — để trống nghĩa là <b>cả kho</b>.</div>
+      <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+        ${Object.keys(LOP_TEN).map(k=>`
+          <label class="row" style="gap:8px;align-items:center;margin:0">
+            <input type="checkbox" data-lop="${k}" ${lop[k]?'checked':''}>
+            <span>${esc(LOP_TEN[k])}</span></label>`).join('')}
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost sm" data-act="chon-sfx">Chọn SFX cụ thể${chon.sfx.length?` (${chon.sfx.length})`:''}</button>
+        <button class="btn sm" id="btnLuuCauHinh">Lưu cấu hình</button>
+      </div>
+    </div>
+
+    <h2>3 · Phân tích record</h2>
+    <div class="row">
       <label class="fld"><span>Bóc lời (tầng khảo sát)</span>
-        <select id="asrSel" title="Đo trên CPU 4 nhân, file 8 phút. Máy có GPU thì nhanh hơn nhiều lần.">
+        <select id="asrSel">
           ${opt('tiny','tiny — nhanh nhất, SAI CHỮ NHIỀU',curAsr)}
           ${opt('base','base — nhanh gấp ~2,7 lần small, sai chữ hơn',curAsr)}
           ${opt('small','small — cân bằng (mặc định)',curAsr)}
           ${opt('medium','medium — chuẩn nhất, chậm nhất',curAsr)}
         </select></label>
       <label class="fld"><span>&nbsp;</span><button class="btn" id="btnIngest"
-        ${ed.keys.gemini?'':'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"'}>Phân tích</button></label>
+        ${!p.work_dir ? 'disabled title="Chọn file record trước"'
+          : (!ed.keys.gemini ? 'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"' : '')}
+        >${p.da_phan_tich?'Phân tích lại':'Phân tích'}</button></label>
+      ${p.da_phan_tich?'<span class="muted small">Phân tích lại có thể ra danh sách chủ đề KHÁC — draft đã dựng vẫn giữ nguyên.</span>':''}
     </div>
-    ${noKey?`<div class="empty" style="text-align:left;padding:var(--spacing-16);border-color:var(--color-danger)">
-       <b>Thiếu API key: ${!ed.keys.gemini?'GEMINI_API_KEY ':''}${!ed.keys.pexels?'PEXELS_API_KEY':''}</b>
-       ${!ed.keys.gemini?'Không có GEMINI_API_KEY thì bóc lời xong vẫn KHÔNG trích được chủ đề — nút Phân tích và chế độ Agent bị khoá. ':''}
-       ${!ed.keys.pexels?'Không có PEXELS_API_KEY thì draft dựng ra sẽ thiếu B-roll. ':''}
-       Đóng app, mở lại bằng: <span class="mono">set GEMINI_API_KEY=... &amp; set PEXELS_API_KEY=... &amp; python app.py</span>
+    ${!ed.keys.gemini?`<div class="empty" style="text-align:left;padding:var(--spacing-16);border-color:var(--color-danger)">
+       <b>Thiếu GEMINI_API_KEY</b> Bóc lời xong vẫn KHÔNG trích được chủ đề.
+       Vào mục <b>Cài đặt</b> ở thanh bên để dán key — áp dụng ngay, không cần khởi động lại.
      </div>`:''}
 
-    <h2>Chọn chủ đề để dựng</h2>
+    <h2>4 · Chủ đề</h2>
     <div class="row sticky">
       <label class="fld"><span>Dựng theo gu editor</span>
         <select id="edSel">${ed.editors.map(e=>opt(e, e, curEd || ed.editors[0])).join('')}</select></label>
       <span class="muted small">Draft đặt tên <span class="mono">&lt;dự án&gt;_t&lt;chủ đề&gt;_&lt;editor&gt;</span> — dựng lại cùng gu sẽ ghi đè bản cũ.</span>
     </div>
-    ${d.projects.length ? d.projects.map((p,pi)=>`
-      <details class="proj" ${pi===0?'open':''}>
-        <summary>${esc(p.name)}
-          <span class="tag">${p.topics.length} chủ đề</span>
-          ${p.has_transcript?'<span class="tag ok">có transcript</span>':''}
-          ${p.topics.some(t=>t.drafts.length)?`<span class="tag info">${p.topics.filter(t=>t.drafts.length).length} đã dựng</span>`:''}</summary>
-        <div class="inner">
-        ${p.topics.length ? `<div class="wrap"><table>
-          <thead><tr><th>#</th><th>Chủ đề</th><th>Điểm</th><th>Dài</th><th>Đã dựng</th><th></th></tr></thead>
-          <tbody>${p.topics.map(t=>`<tr>
-            <td class="mono">${t.i}</td><td>${esc(t.title)}</td>
-            <td class="mono"><b>${t.score??''}</b></td><td class="mono">${t.dur}s</td>
-            <td>${t.drafts.map(x=>`<span class="tag ${x.locked?'bad':'ok'}"
-                   title="${esc(x.name)} · ${x.locked?'đang mở trong CapCut · ':''}sửa lần cuối ${vnTime(x.mtime*1000)}"
-                   >${esc(x.editor)}</span>`).join(' ') || '<span class="muted">—</span>'}</td>
-            <td class="actions">
-              <button class="btn ghost sm" data-act="preview" data-proj="${esc(p.name)}" data-i="${t.i}">Xem trước</button>
-              <button class="btn ghost sm" data-act="gen" data-proj="${esc(p.name)}" data-i="${t.i}">Tạo draft</button></td>
-          </tr>`).join('')}</tbody></table></div>`
-          : emptyBox('Không có chủ đề nào đạt ngưỡng', 'Record này không có đoạn nào đủ điểm để làm short.')}
-        </div></details>`
-      ).join('')
-      : emptyBox('Chưa có record nào được phân tích', 'Quét thư mục ở trên, chọn file rồi bấm Phân tích.')}
+    ${p.topics.length ? `<div class="wrap"><table>
+      <thead><tr><th>#</th><th>Chủ đề</th><th>Điểm</th><th>Dài</th><th>Đã dựng</th><th></th></tr></thead>
+      <tbody>${p.topics.map(t=>`<tr>
+        <td class="mono">${t.i}</td><td>${esc(t.title)}</td>
+        <td class="mono"><b>${t.score??''}</b></td><td class="mono">${t.dur}s</td>
+        <td>${t.drafts.map(x=>`<span class="tag ${x.locked?'bad':'ok'}"
+               title="${esc(x.name)} · ${x.locked?'đang mở trong CapCut · ':''}sửa lần cuối ${vnTime(x.mtime*1000)}"
+               >${esc(x.editor)}</span>`).join(' ') || '<span class="muted">—</span>'}</td>
+        <td class="actions">
+          <button class="btn ghost sm" data-act="preview" data-proj="${esc(p.work_dir)}" data-i="${t.i}">Xem trước</button>
+          <button class="btn ghost sm" data-act="gen" data-proj="${esc(p.work_dir)}" data-i="${t.i}">Tạo draft</button></td>
+      </tr>`).join('')}</tbody></table></div>`
+      : emptyBox(p.da_phan_tich?'Không có chủ đề nào đạt ngưỡng':'Chưa phân tích',
+                 p.da_phan_tich?'Record này không có đoạn nào đủ điểm để làm short.'
+                               :'Gắn file record rồi bấm Phân tích ở bước 3.')}
+
+    <h2>5 · Cân bằng âm thanh</h2>
+    <div id="audioBox"></div>
 
     <h2>Tiến trình</h2>
     <div id="jobs"></div>`;
-  $('#btnBrowse').onclick = e => browse(e.currentTarget, true);   // bấm tay = quét lại thật
+
+  if(!p.work_dir){
+    $('#btnBrowse').onclick = e => browse(e.currentTarget, true);
+    $('#btnGanRecord').onclick = e => ganRecord(e.currentTarget);
+    $('#btnPickDir').onclick = e => pick(e.currentTarget, 'thu_muc');
+    $('#btnPickFile').onclick = e => pick(e.currentTarget, 'file');
+    browse();
+  }
   $('#btnIngest').onclick = e => ingest(e.currentTarget);
   $('#asrSel').onchange = e => PREF.set('asr', e.target.value);
   $('#edSel').onchange  = e => PREF.set('editor', e.target.value);
-  browse(); pollJobs();
+  $('#btnLuuCauHinh').onclick = e => luuCauHinh(e.currentTarget);
+  loadAudioInto('#audioBox', p);
+  pollJobs();
+}
+
+/* Hộp thoại chọn của Windows. Gõ tay đường dẫn là bắt làm việc không công, mà sai
+   một ký tự thì chỉ báo "không thấy thư mục" chứ không chỉ sai chỗ nào. */
+async function pick(btn, kieu){
+  await busy(btn, 'Đang mở…', async () => {
+    try{
+      const r = await api(`/api/pick?kieu=${kieu}`, {method:'POST'});
+      if(r.huy) return;                       // người dùng bấm Cancel — im lặng là đúng
+      if(kieu === 'thu_muc'){
+        $('#dirIn').value = r.path; PREF.set('dir', r.path);
+        browse(null, true);
+      }else{
+        /* Chọn thẳng một file: nạp nó vào danh sách rồi chọn sẵn, để bước sau vẫn
+           là "Dùng file này" giống hệt đường quét — một luồng, không hai kiểu. */
+        const sel = $('#fileSel');
+        const ten = r.path.split('/').pop();
+        sel.insertAdjacentHTML('afterbegin', `<option value="${esc(r.path)}" selected>${esc(ten)} · chọn tay</option>`);
+        sel.value = r.path;
+        toast('Đã chọn file — bấm "Dùng file này"');
+      }
+    }catch(e){ toast(String(e), true); }
+  });
+}
+
+async function ganRecord(btn){
+  const sel = $('#fileSel'), path = sel && sel.value;
+  if(!path || path.startsWith('—') || path.startsWith('đang')) return toast('Chưa chọn file record', true);
+  await busy(btn, 'Đang gắn…', async () => {
+    try{
+      const p = await api(`/api/app-projects/${PROJ_ID}/record?path=${encodeURIComponent(path)}`, {method:'POST'});
+      // Tên mặc định là ngày giờ — đổi sang tên file cho dễ nhận ra trong danh sách.
+      if(/^Dự án \d/.test(p.ten))
+        await api(`/api/app-projects/${PROJ_ID}`, {method:'PATCH',
+          headers:{'Content-Type':'application/json'}, body: JSON.stringify({ten: p.work_dir})});
+      /* Dùng chung record thì CHO, nhưng phải nói rõ hậu quả — draft trùng tên sẽ đè
+         nhau. Cản thì người dùng phải nhân bản file chỉ để đổi tên, tốn đĩa vô ích. */
+      if(p.dung_chung) await modal({title:'Record này đang dùng ở dự án khác', body:p.dung_chung,
+                                    actions:[{label:'Đã hiểu', value:true}]});
+      else toast('Đã gắn record');
+      guard('#work', loadWork);
+    }catch(e){ toast(String(e), true); }
+  });
+}
+
+async function luuCauHinh(btn){
+  const lop = {};
+  document.querySelectorAll('#work input[data-lop]').forEach(x => lop[x.dataset.lop] = x.checked);
+  await busy(btn, 'Đang lưu…', async () => {
+    try{
+      await api(`/api/app-projects/${PROJ_ID}`, {method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({cau_hinh: {lop, chon: (PROJ && PROJ.cau_hinh.chon) || {}}})});
+      toast('Đã lưu cấu hình tài nguyên');
+    }catch(e){ toast(String(e), true); }
+  });
 }
 /* Quét thư mục = chạy ffprobe từng file, vài giây. Tab Dự án vẽ lại mỗi lần job
    xong, nên nhớ kết quả lần trước; bấm "Quét" mới quét thật lại. */
@@ -975,11 +1326,19 @@ async function browse(btn, force){
       const d = await api('/api/browse?dir='+encodeURIComponent(want));
       $('#dirIn').value = d.dir; PREF.set('dir', d.dir);   // bỏ trống -> server tự chọn mặc định
       const html = d.files.length
-        ? d.files.map(f=>`<option value="${esc(f.path)}">${esc(f.name)} · ${f.dur_min} phút`
-            + `${f.video?'':' · 🎧 chỉ tiếng'} · xử lý ~${f.eta_min} phút</option>`).join('')
+        ? d.files.map(f=>`<option value="${esc(f.path)}">${esc(f.duong||f.name)} · ${f.dur_min} phút`
+            + `${f.video?'':' · 🎧 chỉ tiếng'} · xử lý ~${f.eta_min} phút`
+            + `${f.eta_do_that?'':' (ước lượng)'}</option>`).join('')
         : '<option>— không có file record —</option>';
       SCAN = {key: want, dir: d.dir, html};
       sel.innerHTML = html;
+      /* Cắt bớt trong im lặng là app nói dối: nhìn 300 dòng mà tưởng thư mục chỉ có
+         ngần đó (docs/UI.md mục 6). */
+      const note = $('#scanNote');
+      if(note) note.innerHTML = d.files.length
+        ? `Thấy <b>${d.files.length}</b> file${d.de_quy?' (gồm cả thư mục con, sâu tối đa 4 tầng)':''}.`
+          + (d.cat_bot?` <span class="neg">Đã dừng ở ${d.max_file} file — thư mục quá lớn, hãy trỏ sát hơn hoặc bấm "Chọn file…".</span>`:'')
+        : 'Không thấy file video/audio nào trong thư mục này.';
     }catch(e){ SCAN = {key:null, dir:null, html:null}; sel.innerHTML = `<option>${esc(e)}</option>`; }
   });
 }
@@ -990,7 +1349,10 @@ async function ingest(btn){
   if(!await confirmBox('Phân tích record?', label + '\n\nChạy nền — theo dõi ở mục Tiến trình.')) return;
   await busy(btn, 'Đang gửi…', async () => {
     try{
-      await api(`/api/ingest?path=${encodeURIComponent(path)}&asr=${$('#asrSel').value}`,{method:'POST'});
+      /* Truyền work_dir của DỰ ÁN: hai dự án dùng chung một record vẫn phải phân tích
+         riêng, suy từ tên file là ghi đè lên nhau. */
+      const w = (PROJ && PROJ.work_dir) ? `&work=${encodeURIComponent(PROJ.work_dir)}` : '';
+      await api(`/api/ingest?path=${encodeURIComponent(path)}&asr=${$('#asrSel').value}${w}`,{method:'POST'});
       toast('Đã khởi động phân tích'); askNotify(); startPolling();
     }catch(e){ toast(String(e), true); }
   });
@@ -1088,12 +1450,12 @@ async function pollJobs(){
     SEEN_DONE.add(j.id); notifyDone(j);
     const cb = JOB_DONE_CB[j.id];
     if(cb){ delete JOB_DONE_CB[j.id]; try{ cb(j); }catch(e){} }
-    /* Xong việc thì màn hình phải TỰ đúng: dựng xong mà tab Dự án vẫn ghi "chưa
-       dựng", tab Draft vẫn thiếu draft mới, là người dùng phải tự F5 mới tin. */
-    if(j.result && j.result.project && !$('#proj').hidden) guard('#proj', loadProj);
-    if(j.result && j.result.draft){
-      if(!$('#proj').hidden)  guard('#proj', loadProj);
-      if(!$('#draft').hidden) guard('#draft', loadDrafts);
+    /* Xong việc thì màn hình phải TỰ đúng: dựng xong mà màn hình làm việc vẫn ghi
+       "chưa dựng", Tổng quan vẫn thiếu draft mới, là người dùng phải tự F5 mới tin. */
+    if(j.result && (j.result.project || j.result.draft)){
+      if(!$('#work').hidden) guard('#work', loadWork);
+      if(!$('#over').hidden) guard('#over', loadOver);
+      if(!$('#home').hidden) guard('#home', loadHome);
     }
   });
   if(!running.length && JOB_TIMER){ clearInterval(JOB_TIMER); JOB_TIMER=null; }
@@ -1172,64 +1534,87 @@ async function fullLog(id){
   modal({title:j.title, body:(j.log||[]).join('\n'), actions:[{label:'Đóng',value:null}]});
 }
 
-/* ══════════════════ TAB: DRAFT ══════════════════ */
-async function loadDrafts(){
-  const box = $('#draft'); box.innerHTML = skeleton(2);
-  const d = await api('/api/drafts');
-  /* Nói rõ tìm thấy CapCut ở đâu — máy người dùng có thể cài chỗ khác, hoặc đã
-     đổi thư mục draft trong Cài đặt của CapCut. Không tìm thấy thì phải chỉ việc
-     cần làm, đừng chỉ hiện bảng rỗng. */
+/* ══════════════════ TAB: TỔNG QUAN ══════════════════
+   Hai thứ, đúng theo thứ tự người dùng cần: (1) mọi dự án CapCut đã dựng — bấm thẻ
+   là mở thẳng trong CapCut; (2) chủ đề đã duyệt mà CHƯA dựng draft — việc còn nợ.
+   Kiểm kê tài nguyên đã chuyển sang Quản lý tài nguyên. */
+async function loadOver(){
+  const box = $('#over'); box.innerHTML = skeleton(3);
+  const [d, ap] = await Promise.all([api('/api/drafts'), api('/api/app-projects')]);
   const where = `<p class="muted small mono" title="nguồn: ${esc(d.capcut_source||'')}">${esc(d.root)}</p>`;
   if(!d.capcut_found){
-    box.innerHTML = '<h2>Draft CapCut</h2>' + where
+    box.innerHTML = '<h2>Dự án CapCut</h2>' + where
       + emptyBox('Không tìm thấy CapCut trên máy này',
           'Cài CapCut và mở thử một lần, rồi khởi động lại app. Nếu đã cài ở nơi khác, '
         + 'chạy app kèm CAPCUT_DRAFTS_ROOT=<đường dẫn thư mục draft>.');
     return;
   }
-  if(!d.drafts.length){        // máy mới cài: bảng rỗng không nói được phải làm gì
-    box.innerHTML = '<h2>Draft CapCut</h2>' + where
-      + emptyBox('Chưa có draft nào', 'Sang tab Dự án, chọn một chủ đề rồi bấm "Tạo draft".');
-    return;
+  // chủ đề chưa dựng: gom từ mọi dự án
+  const chuaDung = [];
+  for(const p of ap.projects){
+    if(!p.work_dir || !p.da_phan_tich) continue;
+    let ct = null;
+    try{ ct = await api('/api/app-projects/'+p.id); }catch(e){ continue; }
+    ct.topics.filter(t => !t.drafts.length)
+             .forEach(t => chuaDung.push({p: ct, t}));
   }
   const q = PREF.get('draftQ', '');
   box.innerHTML = `
-    <h2>Draft CapCut</h2>
+    <h2>Dự án CapCut đã dựng</h2>
     ${where}
+    ${d.drafts.length ? `
     <div class="row">
-      <input id="qDraft" placeholder="lọc theo tên draft…" style="min-width:240px" value="${esc(q)}">
+      <input id="qDraft" placeholder="lọc theo tên…" style="min-width:240px" value="${esc(q)}">
       <span class="muted small" id="qDraftN"></span>
-      <span class="muted small" style="margin-left:auto">Vòng làm việc: chụp mốc → editor sửa trong CapCut → đồng bộ về kho.</span>
+      <span class="muted small" style="margin-left:auto">Bấm thẻ để mở thư mục draft.
+        <b title="Đã đo 27/07: 32 route deep-link của CapCut không route nào nhận draft, không có tham số dòng lệnh, và CapCut chạy một thể hiện">CapCut không cho mở thẳng một dự án từ bên ngoài</b> —
+        nút <i>Mở CapCut</i> chỉ bật app lên.</span>
     </div>
-    <div class="wrap"><table>
-      <thead><tr><th>Draft</th><th>Trạng thái</th><th>Sửa lần cuối</th><th>Hành động</th></tr></thead>
-      <tbody id="draftRows"></tbody></table></div>
-    <div id="diffOut"></div>`;
-  const rows = () => {
-    const f = ($('#qDraft').value||'').toLowerCase();
-    const list = d.drafts.filter(x => !f || x.name.toLowerCase().includes(f));
-    $('#qDraftN').textContent = `${list.length}/${d.drafts.length} draft`;
-    $('#draftRows').innerHTML = list.length ? list.map(x=>`<tr>
-        <td><b>${esc(x.name)}</b></td>
-        <td>${x.locked?'<span class="tag bad">đang mở trong CapCut</span>':'<span class="tag ok">rảnh</span>'}
-            ${x.snapshot?'<span class="tag info">có mốc</span>':'<span class="tag">chưa có mốc</span>'}</td>
-        <td class="mono">${vnTime(x.mtime*1000)}</td>
+    <div class="plist" id="draftCards"></div>`
+    : emptyBox('Chưa có dự án CapCut nào', 'Về Home, mở một dự án rồi dựng draft từ một chủ đề.')}
+
+    <h2>Chủ đề chưa dựng draft</h2>
+    ${chuaDung.length ? `<div class="wrap"><table>
+      <thead><tr><th>Dự án</th><th>#</th><th>Chủ đề</th><th>Điểm</th><th>Dài</th><th></th></tr></thead>
+      <tbody>${chuaDung.map(({p,t})=>`<tr>
+        <td>${esc(p.ten)}</td><td class="mono">${t.i}</td><td>${esc(t.title)}</td>
+        <td class="mono"><b>${t.score??''}</b></td><td class="mono">${t.dur}s</td>
         <td class="actions">
+          <button class="btn ghost sm" data-act="preview" data-proj="${esc(p.work_dir)}" data-i="${t.i}">Xem trước</button>
+          <button class="btn ghost sm" data-act="gen" data-proj="${esc(p.work_dir)}" data-i="${t.i}">Tạo draft</button>
+        </td></tr>`).join('')}</tbody></table></div>`
+      : emptyBox('Không còn chủ đề nào chờ dựng', 'Mọi chủ đề đã duyệt đều có draft rồi.')}
+
+    <div id="diffOut"></div>`;
+  const rowsC = () => {
+    const f = ($('#qDraft') && $('#qDraft').value || '').toLowerCase();
+    const list = d.drafts.filter(x => !f || x.name.toLowerCase().includes(f));
+    if($('#qDraftN')) $('#qDraftN').textContent = `${list.length}/${d.drafts.length} dự án`;
+    const box2 = $('#draftCards'); if(!box2) return;
+    box2.innerHTML = list.length ? list.map(x=>`
+      <div class="pcard" data-act="open-capcut" data-name="${esc(x.name)}" title="Bấm để mở thư mục draft">
+        <b>${esc(x.name)}</b>
+        <div class="l">${x.locked?'<span class="tag bad">đang mở trong CapCut</span>':'<span class="tag ok">rảnh</span>'}
+            ${x.snapshot?'<span class="tag info">có mốc</span>':'<span class="tag">chưa có mốc</span>'}</div>
+        <div class="l" style="margin-top:6px">sửa lần cuối ${vnTime(x.mtime*1000)}</div>
+        <div class="acts">
           <button class="btn ghost sm" data-act="snap" data-name="${esc(x.name)}">Chụp mốc</button>
           <button class="btn ghost sm" data-act="diff" data-name="${esc(x.name)}" ${x.snapshot?'':'disabled title="Cần chụp mốc trước"'}>Editor sửa gì</button>
           <button class="btn ghost sm" data-act="sync" data-name="${esc(x.name)}" ${x.snapshot&&!x.locked?'':'disabled title="Cần có mốc và đóng draft trong CapCut"'}>Đồng bộ về kho</button>
-          <button class="btn ghost sm" data-act="open" data-name="${esc(x.name)}" title="Mở thư mục draft trong Explorer">Mở thư mục</button>
-        </td></tr>`).join('')
-      : `<tr><td colspan="4" class="muted">Không có draft nào khớp "${esc($('#qDraft').value)}"</td></tr>`;
+          <button class="btn ghost sm" data-act="bat-capcut" data-name="${esc(x.name)}" title="Bật CapCut lên — rồi tự chọn dự án này trong danh sách">Mở CapCut</button>
+        </div>
+      </div>`).join('') : emptyBox('Không có dự án nào khớp bộ lọc', 'Thử xoá bớt chữ trong ô lọc.');
   };
-  $('#qDraft').oninput = e => { PREF.set('draftQ', e.target.value); rows(); };
-  rows();
+  if($('#qDraft')) $('#qDraft').oninput = () => { PREF.set('draftQ', $('#qDraft').value); rowsC(); };
+  rowsC();
 }
+
+/* ══════════════════ (cũ) TAB: DRAFT — giữ hàm cho các lối gọi còn lại ══════════════════ */
 async function snapDraft(n, btn){
   await busy(btn, 'Đang chụp…', async () => {
     try{ await api(`/api/draft/${encodeURIComponent(n)}/snapshot`,{method:'POST'});
          toast(`Đã chụp mốc "${n}" — giờ editor sửa trong CapCut, xong bấm "Editor sửa gì"`);
-         guard('#draft', loadDrafts); }
+         guard('#over', loadOver); }
     catch(e){ toast(String(e), true); }
   });
 }
@@ -1288,30 +1673,36 @@ async function syncDraft(n, btn){
     try{
       const r = await api(`/api/draft/${encodeURIComponent(n)}/sync?owner=${encodeURIComponent(who)}`,{method:'POST'});
       toast(`Thêm ${r.added} (${r.new_in_lib} mới vào kho) · gỡ ${r.removed} · giữ ${r.kept}`);
-      guard('#draft', loadDrafts);
+      guard('#over', loadOver);
     }catch(e){ toast(String(e), true); }
   });
 }
 
 /* ══════════════════ TAB: ÂM THANH ══════════════════ */
 let CUR_DRAFT=null, LOCKED=new Set();
-async function loadAudio(){
-  const box = $('#audio'); box.innerHTML = skeleton(2);
+/* Cân bằng âm thanh KHÔNG còn là một khu vực riêng trên thanh bên: nó luôn thao tác
+   trên draft của MỘT dự án, nên đứng riêng thì người dùng phải tự nhớ draft nào thuộc
+   dự án nào. Giờ nhúng vào màn hình làm việc, và chỉ liệt kê draft của chính dự án đó. */
+async function loadAudioInto(sel, proj){
+  const box = $(sel); if(!box) return;
+  box.innerHTML = skeleton(1);
   const d = await api('/api/drafts');
-  if(!d.drafts.length){
-    box.innerHTML = '<h2>Cân bằng âm thanh</h2>'
-      + emptyBox('Chưa có draft nào để đo', 'Sang tab Dự án, tạo draft trước rồi quay lại đây.');
+  let ds = d.drafts;
+  if(proj && proj.work_dir) ds = ds.filter(x => x.name.startsWith(proj.work_dir + '_t'));
+  if(!ds.length){
+    box.innerHTML = emptyBox('Chưa có draft nào để đo',
+      'Dựng ít nhất một draft ở bước 4, rồi quay lại đây để cân bằng âm lượng.');
     return;
   }
   LOCKED = new Set(d.drafts.filter(x=>x.locked).map(x=>x.name));
   const want = CUR_DRAFT || PREF.get('audioDraft', '');
-  const cur = d.drafts.some(x=>x.name===want) ? want : d.drafts[0].name;
+  const cur = ds.some(x=>x.name===want) ? want : ds[0].name;
   CUR_DRAFT = cur;
+  const dd = {drafts: ds};
   box.innerHTML = `
-    <h2>Cân bằng âm thanh</h2>
     <div class="row">
       <label class="fld"><span>Draft</span>
-        <select id="selD" style="min-width:260px">${d.drafts.map(x=>
+        <select id="selD" style="min-width:260px">${dd.drafts.map(x=>
           `<option ${x.name===cur?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
       <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnMeasure">Đo lại</button></label>
       <label class="fld"><span>&nbsp;</span><button class="btn" id="btnApply">Cân bằng &amp; ghi vào draft</button></label>
@@ -1327,7 +1718,7 @@ async function loadAudio(){
       try{
         const r = await api(`/api/draft/${encodeURIComponent(n)}/balance?dry=false`,{method:'POST'});
         toast('Đang ghi âm lượng…');
-        JOB_DONE_CB[r.job] = () => { if(!$('#audio').hidden) measure(); };   // đo lại khi ghi XONG thật
+        JOB_DONE_CB[r.job] = () => { if(!$('#work').hidden) measure(); };   // đo lại khi ghi XONG thật
         startPolling();
       }catch(e){ toast(String(e), true); }
     });
@@ -1395,7 +1786,9 @@ async function loadLib(){
       <input id="qLib" placeholder="lọc theo tên…" style="min-width:220px">
       <select id="kLib"><option value="">tất cả loại</option>${d.by_kind.map(k=>`<option value="${esc(k.kind)}">${esc(k.kind)} (${k.n})</option>`).join('')}</select>
     </div>
-    <div id="libTable"></div>`;
+    <div id="libTable"></div>
+    <div id="invBox"></div>`;
+  loadInv();          // kiểm kê máy + dọn dẹp, chuyển từ Tổng quan sang đây
   const br = $('#btnRestore');
   if(br) br.onclick = () => busy(br, 'Đang cài…', async () => {
     try{
