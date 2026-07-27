@@ -70,6 +70,34 @@ def fmt_ts(sec: float) -> str:
     return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:d}:{s:02d}"
 
 
+# Windows không cho tạo symlink nếu chưa bật Developer Mode / không chạy admin ->
+# huggingface_hub NÉM LỖI khi tải model Whisper lần đầu (WinError 1314), tức app
+# chết ngay lần chạy đầu trên máy mới. Máy dev không lộ vì model đã nằm sẵn trong
+# cache. Ép hub chép file thay vì tạo symlink.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+
+def _luong_cpu() -> int:
+    """Số luồng cho CTranslate2 — mặc định là SỐ NHÂN THẬT, không phải số luồng
+    luận lý. Đo trên máy 8 luồng / 4 nhân (file 8 phút, batched):
+
+        small  4 luồng 58,8s   |  8 luồng 71,2s   (chậm hơn 21%)
+        base   4 luồng 21,3s   |  8 luồng 25,0s   (chậm hơn 17%)
+        tiny   4 luồng 12,8s   |  8 luồng 14,2s   (chậm hơn 11%)
+
+    Nhồi thêm luồng vào batched inference là hại, không lợi. Đặt CT2_THREADS để đè.
+    """
+    v = os.environ.get("CT2_THREADS")
+    if v and v.isdigit() and int(v) > 0:
+        return int(v)
+    try:
+        import multiprocessing as mp
+        return max(1, mp.cpu_count() // 2)
+    except (ImportError, NotImplementedError):
+        return 4
+
+
 def transcribe(source: str, model_name: str = "small", device: str = "cuda") -> dict:
     wd = work_dir(source)
     cache = wd / f"transcript.{model_name}.json"
@@ -87,11 +115,13 @@ def transcribe(source: str, model_name: str = "small", device: str = "cuda") -> 
     print(f"  [asr] nạp model '{model_name}' trên {device}...")
     ct = "int8_float16" if device == "cuda" else "int8"
     try:
-        model = WhisperModel(model_name, device=device, compute_type=ct)
+        model = WhisperModel(model_name, device=device, compute_type=ct,
+                             cpu_threads=_luong_cpu())
     except Exception as e:
         print(f"  [asr] {device} lỗi ({e}); chuyển sang CPU")
         device, ct = "cpu", "int8"
-        model = WhisperModel(model_name, device=device, compute_type=ct)
+        model = WhisperModel(model_name, device=device, compute_type=ct,
+                             cpu_threads=_luong_cpu())
 
     print(f"  [asr] transcribe {fmt_ts(dur)} (word-timestamps, VAD)...")
     t0 = time.time()
@@ -156,11 +186,11 @@ def transcribe_survey(source: str, model_name: str = "small", device: str = "cud
 
     ct = "int8_float16" if device == "cuda" else "int8"
     try:
-        base = WhisperModel(model_name, device=device, compute_type=ct)
+        base = WhisperModel(model_name, device=device, compute_type=ct, cpu_threads=_luong_cpu())
     except Exception as e:
         print(f"  [asr-survey] {device} lỗi ({e}); chuyển CPU")
         device, ct = "cpu", "int8"
-        base = WhisperModel(model_name, device=device, compute_type=ct)
+        base = WhisperModel(model_name, device=device, compute_type=ct, cpu_threads=_luong_cpu())
     model = BatchedInferencePipeline(model=base)
 
     print(f"  [asr-survey] khảo sát {fmt_ts(dur)} — batched, greedy, không mốc từ...")

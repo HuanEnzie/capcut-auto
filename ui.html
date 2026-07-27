@@ -896,8 +896,13 @@ async function loadProj(){
       <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét</button></label>
       <label class="fld"><span>File record</span>
         <select id="fileSel" style="min-width:300px"><option>— bấm Quét —</option></select></label>
-      <label class="fld"><span>Độ chính xác</span>
-        <select id="asrSel">${opt('small','small — nhanh',curAsr)}${opt('medium','medium — chuẩn hơn',curAsr)}</select></label>
+      <label class="fld"><span>Bóc lời (tầng khảo sát)</span>
+        <select id="asrSel" title="Đo trên CPU 4 nhân, file 8 phút. Máy có GPU thì nhanh hơn nhiều lần.">
+          ${opt('tiny','tiny — nhanh nhất, SAI CHỮ NHIỀU',curAsr)}
+          ${opt('base','base — nhanh gấp ~2,7 lần small, sai chữ hơn',curAsr)}
+          ${opt('small','small — cân bằng (mặc định)',curAsr)}
+          ${opt('medium','medium — chuẩn nhất, chậm nhất',curAsr)}
+        </select></label>
       <label class="fld"><span>&nbsp;</span><button class="btn" id="btnIngest"
         ${ed.keys.gemini?'':'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"'}>Phân tích</button></label>
     </div>
