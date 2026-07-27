@@ -152,8 +152,14 @@ def gop_chu_de(ds: list, nguong: float = 0.5) -> list:
 
 def format_transcript(transcript: dict, tu: float = None, den: float = None) -> str:
     # nén: mỗi segment 1 dòng "start| text" (start làm tròn giây) để tiết kiệm token
+    #
+    # BỎ QUA dòng đã đánh dấu `bo` (thử mic, chào hỏi, lặp vô nghĩa): chúng làm loãng
+    # nội dung khi model đi tìm chủ đề. Chỉ bỏ khỏi PROMPT, segment vẫn nằm nguyên
+    # trong transcript — mốc thời gian là thứ dùng để cắt video, mất là hỏng.
     lines = []
     for s in transcript["segments"]:
+        if s.get("bo"):
+            continue
         if tu is not None and s["end"] <= tu:
             continue
         if den is not None and s["start"] >= den:

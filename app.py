@@ -389,6 +389,77 @@ def api_app_project_xoa(pid: int):
         raise HTTPException(404, str(e))
 
 
+@app.get("/api/app-projects/{pid}/transcript")
+def api_transcript(pid: int):
+    """Toàn bộ lời thoại kèm mốc thời gian, cả bản THÔ lẫn bản ĐÃ SẠCH.
+
+    Trả cả hai để người dùng đối chiếu được AI đã sửa gì — sửa im lặng thì không ai
+    biết nó có sửa bậy không, mà ASR tiếng Việt sai đủ nhiều để chuyện đó đáng lo."""
+    p = projects.lay(pid)
+    if not p:
+        raise HTTPException(404, "không thấy dự án")
+    if not p.get("work_dir"):
+        raise HTTPException(400, "dự án chưa gắn record")
+    wd = WORK / p["work_dir"]
+    import transcribe as trm
+    try:
+        t = trm.load_transcript(wd)
+    except FileNotFoundError:
+        raise HTTPException(404, "chưa có transcript — chạy Phân tích trước")
+    dong = [{"i": i, "start": s["start"], "end": s["end"],
+             "text": s.get("text", ""), "goc": s.get("text_goc"),
+             "bo": bool(s.get("bo"))}
+            for i, s in enumerate(t.get("segments", []))]
+    n_sach = sum(1 for d in dong if d["goc"] is not None)
+    n_doi = sum(1 for d in dong if d["goc"] is not None and d["goc"].strip() != d["text"].strip())
+    n_bo = sum(1 for d in dong if d["bo"])
+    return {"dong": dong, "n": len(dong), "n_sach": n_sach, "n_doi": n_doi, "n_bo": n_bo,
+            "dai": t.get("duration_sec", 0), "model": t.get("model"),
+            "record": p.get("record_path", "")}
+
+
+@app.post("/api/app-projects/{pid}/transcript/lam-sach")
+def api_transcript_lam_sach(pid: int, model: str = "gemini-2.5-flash"):
+    """Làm sạch nốt những dòng còn chữ thô của transcript ĐANG DÙNG.
+
+    Cần vì bản bóc kỹ (transcript.fine.json) sinh ra ở bước dựng draft, sau lượt làm
+    sạch lúc phân tích — nên đoạn vừa bóc kỹ luôn là chữ thô cho tới khi có ai đó
+    làm sạch lại."""
+    p = projects.lay(pid)
+    if not p or not p.get("work_dir"):
+        raise HTTPException(404, "không thấy dự án hoặc chưa gắn record")
+    wd = WORK / p["work_dir"]
+    import transcribe as trm
+    import caption_fix as cf
+    try:
+        t = trm.load_transcript(wd)
+    except FileNotFoundError:
+        raise HTTPException(404, "chưa có transcript")
+    ten = t.get("_file") or ("transcript.fine.json" if (wd / "transcript.fine.json").exists()
+                             else "transcript.survey.json")
+
+    def run(log):
+        with contextlib.redirect_stdout(LogWriter(log)):
+            # Đếm TRƯỚC để phân biệt "không có gì phải làm" với "làm không được".
+            # Trước đây cả hai đều in "không có dòng nào cần làm sạch" — cạn hạn ngạch
+            # mà báo như thể đã sạch hết là nói dối người dùng.
+            can = sum(1 for s in t.get("segments", []) if "text_goc" not in s)
+            n = cf.lam_sach_toan_bo(t, model)
+            if n:
+                (wd / ten).write_text(json.dumps(t, ensure_ascii=False), encoding="utf-8")
+                print(f"đã ghi {ten} — {n}/{can} dòng")
+            elif can:
+                raise RuntimeError(
+                    f"Không làm sạch được dòng nào trong {can} dòng còn chữ thô — "
+                    f"xem dòng lỗi ngay trên. Thường là cạn hạn ngạch Gemini; "
+                    f"chờ reset (nửa đêm giờ Thái Bình Dương) rồi bấm lại.")
+            else:
+                print("Toàn bộ transcript đã sạch từ trước, không có gì phải làm.")
+        return {"n": n, "can": can}
+
+    return {"job": run_job(f"Làm sạch lời thoại · {p['ten']}", run)}
+
+
 @app.post("/api/app-projects/{pid}/record")
 def api_app_project_gan_record(pid: int, path: str):
     """Gắn file record vào dự án. CHỈ LÀM ĐƯỢC MỘT LẦN.
@@ -596,13 +667,23 @@ def api_ingest(path: str, asr: str = "small", model: str = "gemini-2.5-flash",
     def run(log):
         import transcribe as tr
         import topics as tp
+        import caption_fix as cf
         with contextlib.redirect_stdout(LogWriter(log)):
-            print(f"[1/2] Khảo sát nhanh '{src.name}' (model {asr}, {device})...")
+            print(f"[1/3] Khảo sát nhanh '{src.name}' (model {asr}, {device})...")
             # TẦNG 1: batched + greedy, không mốc từ -> đo được ~43x realtime
             # (cách cũ 8.5x). Mốc từng từ để tầng 2 lo, chỉ trên đoạn được chọn.
-            tr.transcribe_survey(str(src), asr, device, ten=work)
+            sv = tr.transcribe_survey(str(src), asr, device, ten=work)
             wd = tr.work_dir(str(src), work)
-            print(f"[2/2] Gemini trích chủ đề ({model})...")
+
+            # LÀM SẠCH TRƯỚC KHI TRÍCH CHỦ ĐỀ. Trước đây bản sạch chỉ dùng cho caption
+            # ở cuối, còn bước trích chủ đề đọc chữ thô đầy lỗi -> Gemini vừa phải
+            # đoán người ta nói gì vừa tìm chủ đề. Chọn sai đoạn là hỏng từ gốc.
+            print(f"[2/3] Làm sạch transcript ({model})...")
+            if cf.lam_sach_toan_bo(sv, model):
+                (wd / "transcript.survey.json").write_text(
+                    json.dumps(sv, ensure_ascii=False), encoding="utf-8")
+
+            print(f"[3/3] Gemini trích chủ đề ({model})...")
             prof = str(assetlib.ROOT / "shorts" / "profiles" / "meeting.yaml")
             tp.extract_topics(wd, prof, model, False)
         tj = wd / "topics.json"

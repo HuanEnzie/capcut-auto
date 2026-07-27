@@ -365,6 +365,24 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
 .lop input{flex:0 0 auto}
 .lop span{min-width:0}
 
+/* Lời thoại: bảng dày, cỡ chữ caption và mốc giờ canh cột để quét mắt theo cột dọc */
+.tslist{max-height:56vh;overflow:auto;border:var(--border-w) solid var(--color-hairline);
+        border-radius:var(--radius)}
+.tsrow{display:flex;gap:10px;padding:7px 10px;font-size:var(--text-caption);
+       line-height:var(--leading-caption);border-bottom:1px solid var(--color-hairline)}
+.tsrow:last-child{border-bottom:0}
+.tsrow .t{flex:0 0 46px;color:var(--color-pencil-gray)}
+.tsrow .w{min-width:0;color:var(--color-charcoal)}
+/* Dòng AI ĐÃ SỬA CHỮ được đánh dấu, kèm bản thô ngay dưới — người dùng soi được nó
+   sửa đúng hay sửa bậy, thay vì phải tin. */
+.tsrow.doi{background:#fbfff5}
+/* Dòng bị coi là không có nội dung: làm mờ chứ KHÔNG ẩn — người dùng phải soi được
+   AI có bỏ nhầm câu hay không, mà ẩn đi thì chẳng ai kiểm được. */
+.tsrow.bo .w{color:var(--color-faded-gray)}
+.tsrow.bo{background:#fafafa}
+.tsrow .goc{display:block;color:var(--color-pencil-gray);text-decoration:line-through;
+            margin-top:2px}
+
 /* Thẻ chủ đề: cao bằng nhau để so sánh được theo hàng, nút luôn nằm đáy thẻ */
 .tcard{display:flex;flex-direction:column}
 .tcard b{flex:0 0 auto;line-height:1.3}
@@ -1324,8 +1342,12 @@ async function loadWork(){
         <h2 style="margin:0">Chủ đề</h2>
         <p class="muted small" style="margin:4px 0 0" id="topicN"></p>
       </div>
-      <label class="fld" style="margin:0"><span>Dựng theo gu editor</span>
-        <select id="edSel">${ed.editors.map(e=>opt(e, e, curEd || ed.editors[0])).join('')}</select></label>
+      <div class="row" style="margin:0;align-items:flex-end">
+        <button class="btn ghost" data-act="xem-transcript"
+          ${p.da_phan_tich?'':'disabled title="Phân tích record trước"'}>Xem lời thoại</button>
+        <label class="fld" style="margin:0"><span>Dựng theo gu editor</span>
+          <select id="edSel">${ed.editors.map(e=>opt(e, e, curEd || ed.editors[0])).join('')}</select></label>
+      </div>
     </div>
     ${p.topics.length ? '<div class="plist" id="topicGrid"></div><div class="pager" id="topicPager"></div>'
       : emptyBox(p.da_phan_tich?'Không có chủ đề nào đạt ngưỡng':'Chưa phân tích record',
@@ -1410,6 +1432,69 @@ function veChuDe(){
     <button class="btn ghost sm" data-act="topic-trang" data-t="${TOPIC_TRANG+1}" ${TOPIC_TRANG<soTrang-1?'':'disabled'}>Sau →</button>`;
 }
 ACTIONS['topic-trang'] = d => { TOPIC_TRANG = +d.t; veChuDe(); };
+
+/* ---------- Xem lời thoại ----------
+   Hai việc trong một màn: (1) đọc lại buổi ghi hình mà không phải mở video, (2) SOI
+   xem AI đã sửa những gì. Sửa im lặng thì không ai biết nó có sửa bậy không — mà ASR
+   tiếng Việt sai đủ nhiều để chuyện đó đáng lo thật. */
+let TS = null, TS_SACH = true;
+const mmss = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+ACTIONS['xem-transcript'] = async () => {
+  $('#mdTitle').textContent = 'Lời thoại';
+  $('#mdBody').innerHTML = '<p class="muted small">Đang tải…</p>';
+  $('#mdActs').innerHTML = '';
+  const dong = document.createElement('button');
+  dong.className = 'btn ghost'; dong.textContent = 'Đóng';
+  dong.onclick = () => { MODAL_CLOSE = null; closeModal(); };
+  $('#mdActs').appendChild(dong);
+  MODAL_CLOSE = () => {};
+  openVeil();
+  document.querySelector('#veil .modal').classList.add('wide', 'bang');
+  try{
+    TS = await api(`/api/app-projects/${PROJ_ID}/transcript`);
+  }catch(e){ $('#mdBody').innerHTML = `<p class="neg">${esc(String(e))}</p>`; return; }
+  $('#mdBody').innerHTML = `
+    <div class="row" style="margin-bottom:10px">
+      <input id="tsQ" placeholder="tìm trong lời thoại…" style="flex:1;min-width:200px">
+      <label class="lop" style="cursor:pointer"><input type="checkbox" id="tsSach" ${TS_SACH?'checked':''}>
+        <span>bản đã làm sạch</span></label>
+    </div>
+    <p class="muted small" id="tsInfo"></p>
+    <div id="tsList" class="tslist"></div>`;
+  const ve = () => {
+    const q = ($('#tsQ').value||'').trim().toLowerCase();
+    const ds = TS.dong.filter(d => !q
+      || (d.text||'').toLowerCase().includes(q) || (d.goc||'').toLowerCase().includes(q));
+    $('#tsInfo').innerHTML = `${ds.length}/${TS.n} dòng · ${TS.n_sach} dòng đã qua AI`
+      + (TS.n_doi ? ` · <b>${TS.n_doi} dòng bị sửa chữ</b>` : '')
+      + (TS.n_bo ? ` · <span class="tag">${TS.n_bo} dòng bỏ khỏi phần tìm chủ đề</span>` : '')
+      + (TS.n_sach < TS.n
+          ? ` · <span class="neg">${TS.n - TS.n_sach} dòng còn chữ thô</span>`
+            + ` <button class="btn ghost sm" data-act="lam-sach-ts">Làm sạch nốt</button>`
+          : '');
+    $('#tsList').innerHTML = ds.length ? ds.map(d=>{
+      const doi = d.goc != null && d.goc.trim() !== (d.text||'').trim();
+      const hien = TS_SACH ? d.text : (d.goc != null ? d.goc : d.text);
+      return `<div class="tsrow${doi?' doi':''}${d.bo?' bo':''}"${d.bo?' title="AI cho là dòng không có nội dung — đã bỏ khỏi phần đi tìm chủ đề, nhưng vẫn giữ mốc thời gian"':''}>
+        <span class="mono t">${mmss(d.start)}</span>
+        <span class="w">${esc(hien)}
+          ${doi && TS_SACH ? `<span class="goc" title="chữ Whisper nghe được trước khi AI sửa">${esc(d.goc)}</span>` : ''}</span>
+      </div>`;
+    }).join('') : '<p class="muted small">Không có dòng nào khớp.</p>';
+  };
+  $('#tsQ').oninput = ve;
+  $('#tsSach').onchange = e => { TS_SACH = e.target.checked; ve(); };
+  ve();
+};
+
+ACTIONS['lam-sach-ts'] = async (d, el) => busy(el, 'Đang gửi…', async () => {
+  try{
+    const r = await api(`/api/app-projects/${PROJ_ID}/transcript/lam-sach`, {method:'POST'});
+    toast('Đang làm sạch lời thoại…'); startPolling();
+    // Xong thì mở lại chính màn này để thấy kết quả, đừng bắt người dùng tự bấm lại.
+    JOB_DONE_CB[r.job] = () => { closeModal(); ACTIONS['xem-transcript'](); };
+  }catch(e){ toast(String(e), true); }
+});
 
 /* Cân bằng âm thanh mở trong hộp thoại: nó là việc LÀM MỘT LẦN sau khi dựng xong,
    để nằm chình ình giữa màn hình làm việc thì đẩy phần chủ đề — thứ dùng thường
@@ -1575,7 +1660,8 @@ function jobProgress(j){
   if(j.state==='error') return {pct:100, label:'lỗi'};
   /* Bước Gemini của luồng phân tích record KHÔNG in mốc thời gian nào. Không bắt
      riêng thì thanh đứng mãi ở "bóc lời 3:55:06 / 3:55:06" — nhìn y như treo. */
-  if(log.some(l => l.includes('[2/2]'))) return {pct:94, label:'Gemini trích chủ đề'};
+  if(log.some(l => l.includes('[3/3]'))) return {pct:94, label:'Gemini trích chủ đề'};
+  if(log.some(l => l.includes('[2/3]'))) return {pct:88, label:'làm sạch transcript'};
   const elapsed = Math.max(1, Date.now()/1000 - (j.ts || 0));
   for(let i=log.length-1;i>=0;i--){                        // ưu tiên mốc thời gian thật
     const m = log[i].match(/\((\d+(?::\d{2}){1,2})\/(\d+(?::\d{2}){1,2})\)/);

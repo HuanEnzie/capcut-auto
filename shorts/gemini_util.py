@@ -76,19 +76,32 @@ def _client(k: str):
     return _CLIENTS[k]
 
 
-def _dang_nghi(k: str) -> bool:
-    return _NGHI.get(k, 0) > time.time()
+def _dang_nghi(k: str, m: str) -> bool:
+    return _NGHI.get((k, m), 0) > time.time()
 
 
-def _cho_nghi(k: str, loi: str):
-    _NGHI[k] = time.time() + (NGHI_RPD if any(x in loi for x in HET_NGAY) else NGHI_RPM)
+def _cho_nghi(k: str, m: str, loi: str):
+    """Cho (KEY, MODEL) nghỉ — KHÔNG phải cho cả key nghỉ.
+
+    LỖI ĐÃ TRẢ GIÁ 27/07: `_NGHI` khoá theo key. Gặp 429 ở model đầu chuỗi là key bị
+    đánh dấu nghỉ, rồi 5 model dự phòng còn lại đều rơi vào `if _dang_nghi(k):
+    continue` — bỏ qua sạch. Chuỗi dự phòng sinh ra để đổi model khi một model cạn,
+    lại tự sập ngay ở lỗi cạn ĐẦU TIÊN. Mà hạn ngạch Google tính theo TỪNG MODEL:
+    gemini-2.5-flash cạn (RPD 20) không có nghĩa gemini-3.5-flash-lite cạn (RPD 500).
+    """
+    _NGHI[(k, m)] = time.time() + (NGHI_RPD if any(x in loi for x in HET_NGAY) else NGHI_RPM)
 
 
 def trang_thai() -> list:
-    """Key nào đang nghỉ và còn bao lâu — để giao diện nói được lý do."""
+    """(key, model) nào đang nghỉ và còn bao lâu — để giao diện nói được lý do."""
     now = time.time()
-    return [{"key": k[:8] + "…", "dang_nghi": _NGHI.get(k, 0) > now,
-             "con_giay": max(0, round(_NGHI.get(k, 0) - now))} for k in keys()]
+    ra = []
+    for k in keys():
+        nghi = [(m, t) for (kk, m), t in _NGHI.items() if kk == k and t > now]
+        ra.append({"key": k[:8] + "…", "dang_nghi": bool(nghi),
+                   "so_model_nghi": len(nghi),
+                   "con_giay": max([0] + [round(t - now) for _, t in nghi])})
+    return ra
 
 
 def _call(client, model, contents, config, retries, quiet, require_parsed, chain=None):
@@ -97,8 +110,8 @@ def _call(client, model, contents, config, retries, quiet, require_parsed, chain
     last, het_ngach = None, False
     for mi, m in enumerate(ds_model):
         for k in ds_key:
-            if k is not None and _dang_nghi(k):
-                continue                        # key này vừa 429, khỏi phí lượt gọi
+            if k is not None and _dang_nghi(k, m):
+                continue                        # cặp key+model này vừa 429, khỏi phí lượt gọi
             cl = client if k is None else _client(k)
             for attempt in range(retries):
                 try:
@@ -115,7 +128,7 @@ def _call(client, model, contents, config, retries, quiet, require_parsed, chain
                     if "429" in s or "RESOURCE_EXHAUSTED" in s:
                         het_ngach = True
                         if k is not None:
-                            _cho_nghi(k, s)
+                            _cho_nghi(k, m, s)
                         break                   # sang key/model khác, chờ ở đây vô ích
                     if not any(x in s for x in OVERLOADED):
                         break                   # không phải quá tải -> đổi model

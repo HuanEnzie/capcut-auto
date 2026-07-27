@@ -18,6 +18,10 @@ from pydantic import BaseModel
 class Line(BaseModel):
     id: int
     text: str
+    # Dòng KHÔNG có nội dung: đế câu, thử mic, chào hỏi, lặp lại vô nghĩa.
+    # Đánh dấu chứ KHÔNG xoá — xoá là mất mốc thời gian, mà mốc chính là thứ dùng để
+    # cắt video. Đánh dấu thì bước trích chủ đề bỏ qua được, còn timing vẫn nguyên.
+    bo: bool = False
 
 class Corrected(BaseModel):
     lines: list[Line]
@@ -27,7 +31,102 @@ SYS = """Bạn sửa lỗi bản ghi tự động (ASR) tiếng Việt để là
 - Sửa từ bị nhận dạng sai theo NGỮ CẢNH (vd 'bối trường'->'môi trường', 'dậy rỗ'->'đẩy rồi').
 - Thêm dấu câu và viết hoa hợp lý cho dễ đọc.
 - GIỮ NGUYÊN số dòng và đúng id của từng dòng; mỗi id vào 1 dòng tương ứng.
-- KHÔNG dịch, KHÔNG gộp/tách dòng, KHÔNG thêm nội dung mới. Nếu dòng đã đúng thì giữ nguyên."""
+- KHÔNG dịch, KHÔNG gộp/tách dòng, KHÔNG thêm nội dung mới. Nếu dòng đã đúng thì giữ nguyên.
+
+TUYỆT ĐỐI KHÔNG ĐỔI TÊN RIÊNG SANG TÊN KHÁC.
+Tên công cụ, sản phẩm, thương hiệu, tên người: chỉ được sửa CHÍNH TẢ của đúng cái tên
+nghe được, KHÔNG được thay bằng một cái tên khác mà bạn thấy quen hơn.
+  ĐÚNG : 'nano bar na 2' -> 'Nano Banana 2'   (cùng một cái tên, chỉ viết lại cho đúng)
+  SAI   : 'nano bar na 2' -> 'Runway Gen-2'   (đổi sang SẢN PHẨM KHÁC — người nói không hề nói thế)
+Không nhận ra tên đó là gì thì GIỮ NGUYÊN như ASR nghe được. Thà để một cái tên viết
+sai còn hơn bịa ra một cái tên đúng chính tả mà sai sự thật — phụ đề gán cho diễn giả
+câu họ chưa từng nói là hỏng nặng hơn nhiều so với sai chính tả.
+
+ĐÁNH DẤU DÒNG BỎ ĐI (`bo`: true) khi CẢ DÒNG không có nội dung gì:
+  - thử mic, kiểm tra đường truyền: 'Alo', 'Mọi người nghe rõ không?', 'Không nghe được'
+  - chào hỏi, kết thúc: 'Bye bye bye', 'Ok', 'Thế thôi'
+  - lặp lại vô nghĩa: 'ba ơi ba ơi ba ơi', 'thì anh em có một cái, thì anh em có một cái'
+  - câu bỏ lửng không hiểu được gì
+Dòng CÓ nội dung dù chỉ một phần thì `bo` = false — thà giữ nhầm còn hơn bỏ mất ý hay.
+`text` vẫn phải sửa chính tả BÌNH THƯỜNG kể cả khi bo=true: phụ đề phải khớp lời nói
+nếu đoạn đó lọt vào bản dựng."""
+
+
+def lam_sach_toan_bo(transcript: dict, model: str) -> int:
+    """Sửa chính tả ASR cho TOÀN BỘ transcript, ghi thẳng vào `text`, giữ bản thô ở
+    `text_goc`. Trả về số dòng vừa sửa.
+
+    VÌ SAO LÀM SỚM, TRƯỚC KHI TRÍCH CHỦ ĐỀ: trước đây bản sạch chỉ dùng cho CAPTION ở
+    cuối chuỗi, còn bước trích chủ đề lại đọc chữ thô đầy lỗi ("dậy rỗ", "áy cộng",
+    "xíu tắc"). Gemini phải vừa đoán người ta nói gì vừa tìm chủ đề — chọn sai đoạn là
+    hỏng từ gốc, mọi bước sau có sạch cũng vô ích.
+
+    Bỏ qua dòng ĐÃ có `text_goc` nên chạy lại nhiều lần không tốn thêm hạn ngạch."""
+    segs = transcript.get("segments", [])
+    can = [s for s in segs if "text_goc" not in s and (s.get("text") or "").strip()]
+    if not can:
+        return 0
+    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        print("  [làm sạch] thiếu GEMINI_API_KEY -> giữ nguyên chữ thô")
+        return 0
+
+    from google import genai
+    from google.genai import types
+    import gemini_util
+    client = genai.Client()
+
+    # CHIA LÔ THEO SỐ KÝ TỰ, không theo số dòng. Bản khảo sát mỗi dòng dài trung bình
+    # 34 GIÂY tiếng nói (~350 ký tự), 120 dòng như bản bóc kỹ là một khối khổng lồ ->
+    # output vượt giới hạn, resp.parsed về None, và vòng dự phòng xoay hết model mà
+    # lần nào cũng cụt. Đầu ra dài xấp xỉ đầu vào nên chặn theo đầu vào là đủ.
+    MAX_KY_TU = 6000
+    lo, cur, n_ky_tu = [], [], 0
+    for s in can:
+        d = len(s.get("text", "")) + 8
+        if cur and n_ky_tu + d > MAX_KY_TU:
+            lo.append(cur); cur, n_ky_tu = [], 0
+        cur.append(s); n_ky_tu += d
+    if cur:
+        lo.append(cur)
+    n_batch = len(lo)
+    print(f"  [làm sạch] sửa chính tả {len(can)} dòng bằng {model} ({n_batch} lô)...")
+    xong = 0
+    for bi in range(n_batch):
+        chunk = lo[bi]
+        # đánh số theo VỊ TRÍ trong lô, không dùng id của segment: id không ổn định
+        # giữa bản khảo sát và bản bóc kỹ (refine_range đánh số lại toàn bộ).
+        body = "\n".join(f"{i}| {s['text']}" for i, s in enumerate(chunk))
+        try:
+            resp, _ = gemini_util.generate(
+                client, model, contents=body,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYS, response_mime_type="application/json",
+                    response_schema=Corrected, max_output_tokens=32000),
+            )
+            sua = {l.id: l for l in resp.parsed.lines}
+            for i, s in enumerate(chunk):
+                l = sua.get(i)
+                if l and l.text.strip():
+                    s["text_goc"] = s["text"]
+                    s["text"] = l.text.strip()
+                    s["bo"] = bool(l.bo)
+                    xong += 1
+        except gemini_util.HetHanNgach as e:
+            # Cạn giữa chừng: giữ phần đã sạch, BÁO rõ phần còn thô. Im lặng thì người
+            # dùng tưởng transcript đã sạch hết rồi mà thực ra còn nửa file đầy lỗi.
+            print(f"  [làm sạch] ⚠️ CẠN HẠN NGẠCH ở lô {bi+1}/{n_batch} — mới sạch "
+                  f"{xong}/{len(can)} dòng, phần còn lại giữ chữ thô. "
+                  f"Chạy lại sau khi hạn ngạch reset để sạch nốt.")
+            break
+        except Exception as e:
+            print(f"    lô {bi+1}/{n_batch} hỏng ({str(e)[:70]}) -> giữ chữ thô")
+    if xong:
+        n_bo = sum(1 for s in segs if s.get("bo"))
+        ky_tu_bo = sum(len(s.get("text", "")) for s in segs if s.get("bo"))
+        print(f"  [làm sạch] xong {xong}/{len(can)} dòng"
+              + (f" · đánh dấu {n_bo} dòng không có nội dung ({ky_tu_bo:,} ký tự) "
+                 f"-> bước trích chủ đề bỏ qua" if n_bo else ""))
+    return xong
 
 
 def lines_in_topics(topics: dict, transcript: dict) -> list:

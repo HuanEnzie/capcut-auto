@@ -318,6 +318,58 @@ def test_work_dir_cho_phep_doi_record_di_cho(tmp_path, monkeypatch):
     transcribe.work_dir(str(b / "rec.mp4"))            # không được ném
 
 
+def test_nghi_theo_tung_model_khong_theo_ca_key(monkeypatch):
+    """Bug đã gặp 27/07: _NGHI khoá theo KEY. Gặp 429 ở model đầu chuỗi là cả key bị
+    đánh dấu nghỉ -> 5 model dự phòng còn lại đều bị bỏ qua. Chuỗi dự phòng sinh ra để
+    đổi model khi một model cạn, lại tự sập ngay ở lỗi cạn ĐẦU TIÊN. Hạn ngạch Google
+    tính theo TỪNG MODEL: 2.5-flash cạn (RPD 20) không có nghĩa lite cạn (RPD 500)."""
+    import gemini_util as g
+    g._NGHI.clear()
+    g._cho_nghi("key1", "gemini-2.5-flash", "429 RESOURCE_EXHAUSTED PerDay")
+    assert g._dang_nghi("key1", "gemini-2.5-flash"), "model vừa 429 phải được cho nghỉ"
+    assert not g._dang_nghi("key1", "gemini-3.5-flash-lite"), \
+        "model KHÁC trên cùng key vẫn phải gọi được — nếu không chuỗi dự phòng vô dụng"
+    g._NGHI.clear()
+
+
+def test_cam_ai_doi_ten_rieng_khi_lam_sach():
+    """Bug đã gặp 27/07: Whisper nghe 'nano bar na 2' (Nano Banana 2 — model ảnh của
+    Google), AI 'sửa' thành 'Runway Gen-2' — đổi hẳn sang sản phẩm KHÁC. Gán cho diễn
+    giả câu họ chưa từng nói là hỏng nặng hơn nhiều so với sai chính tả."""
+    import caption_fix
+    s = caption_fix.SYS
+    assert "TÊN RIÊNG" in s.upper(), "prompt phải cấm đổi tên riêng"
+    assert "GIỮ NGUYÊN" in s, "không nhận ra tên thì phải giữ nguyên chữ ASR nghe được"
+
+
+def test_lam_sach_chia_lo_theo_ky_tu(monkeypatch):
+    """Bug đã gặp: chia lô theo SỐ DÒNG (120) vốn chỉnh cho câu ngắn của bản bóc kỹ.
+    Bản khảo sát mỗi dòng ~34 giây tiếng nói -> 100 dòng thành khối ~35k ký tự, output
+    vượt giới hạn, resp.parsed về None, vòng dự phòng xoay hết model mà lần nào cũng
+    cụt -> treo cứng."""
+    import inspect
+    import caption_fix
+    src = inspect.getsource(caption_fix.lam_sach_toan_bo)
+    assert "MAX_KY_TU" in src, "phải chia lô theo số ký tự, không theo số dòng"
+    assert "text_goc" in src, "phải giữ bản thô để người dùng đối chiếu AI sửa gì"
+
+
+def test_bo_dong_dem_khoi_prompt_nhung_giu_moc_thoi_gian():
+    """Câu đệm ('ba ơi ba ơi ba ơi', 'alo alo') làm loãng nội dung khi tìm chủ đề.
+    Bỏ khỏi PROMPT thì được, nhưng KHÔNG được xoá segment: mốc thời gian là thứ dùng
+    để cắt video, mất là hỏng cả bản dựng."""
+    import topics as tp
+    tr = {"segments": [
+        {"start": 0, "end": 5, "text": "Nội dung thật sự đáng làm short"},
+        {"start": 5, "end": 8, "text": "Alo alo mọi người nghe rõ không", "bo": True},
+        {"start": 8, "end": 12, "text": "Nội dung thứ hai"},
+    ]}
+    body = tp.format_transcript(tr)
+    assert "Nội dung thật sự" in body and "Nội dung thứ hai" in body
+    assert "Alo alo" not in body, "dòng đánh dấu bỏ vẫn lọt vào prompt"
+    assert len(tr["segments"]) == 3, "KHÔNG được xoá segment — mất mốc là hỏng cắt video"
+
+
 def test_chia_cua_so_phu_het_record():
     """Bug đã gặp: nhồi cả transcript 58 phút vào MỘT lượt gọi -> 20 phút CUỐI không
     sinh chủ đề nào, độ phủ 9,5%. Cửa sổ phải phủ kín [0, dài] và có chồng lấn để
