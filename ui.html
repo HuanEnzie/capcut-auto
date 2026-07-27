@@ -330,6 +330,41 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
 .prj .stats b{display:inline;font-family:var(--font-feather);font-size:20px;
               font-weight:800;color:var(--color-charcoal);margin-right:4px}
 
+/* ══════════════════ MÀN HÌNH LÀM VIỆC ══════════════════ */
+.workbar{display:flex;align-items:center;gap:var(--element-gap);flex-wrap:wrap;
+         margin-bottom:var(--element-gap)}
+
+/* Cài đặt dự án: gập lại. Ba bước này chỉ làm MỘT LẦN lúc lập dự án, mà trước đây
+   chiếm nguyên phần trên màn hình nên thứ dùng hằng ngày (chủ đề) bị đẩy xuống. */
+.setup{border:var(--border-w) solid var(--color-hairline);border-radius:var(--radius);
+       background:var(--color-paper-white)}
+.setup>summary{cursor:pointer;list-style:none;padding:var(--card-padding);
+       display:flex;align-items:center;gap:var(--element-gap);flex-wrap:wrap}
+.setup>summary::-webkit-details-marker{display:none}
+.setup>summary::before{content:'▸';color:var(--color-pencil-gray);font-size:14px;flex:0 0 auto}
+.setup[open]>summary::before{content:'▾'}
+.setup>summary .tit{font-weight:var(--font-weight-bold);color:var(--color-charcoal);
+       font-size:var(--text-subheading)}
+.setup>summary .sum{color:var(--color-pencil-gray);font-size:var(--text-caption);
+       margin-left:auto;text-align:right;word-break:break-word}
+.setup:not([open])>summary:hover{background:#fafafa;border-radius:var(--radius)}
+.setup .inner{padding:0 var(--card-padding) var(--card-padding);
+       border-top:var(--border-w) solid var(--color-hairline)}
+/* Nhãn nhóm bên trong khối gập — nhỏ hơn h2 để không tranh chấp với nhãn mục ngoài */
+.setup h3.sub{font-size:var(--text-caption);font-weight:var(--font-weight-bold);
+       color:var(--color-charcoal);text-transform:none;letter-spacing:0;
+       margin:var(--spacing-16) 0 8px}
+
+/* Công tắc lớp: lưới cố định, nhãn KHÔNG rớt dòng. Trước đây dùng .tiles nên nhãn
+   dài như "Hiệu ứng tiếng (SFX)" gãy làm hai dòng, mỗi ô một chiều cao. */
+.lopgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.lop{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;
+     border:var(--border-w) solid var(--color-hairline);border-radius:var(--radius);
+     font-size:var(--text-caption);color:var(--color-charcoal)}
+.lop:hover{border-color:var(--color-faded-gray)}
+.lop input{flex:0 0 auto}
+.lop span{min-width:0}
+
 /* Thẻ chủ đề: cao bằng nhau để so sánh được theo hàng, nút luôn nằm đáy thẻ */
 .tcard{display:flex;flex-direction:column}
 .tcard b{flex:0 0 auto;line-height:1.3}
@@ -1203,83 +1238,101 @@ async function loadWork(){
                    emoji:'Emoji', broll:'B-roll stock', card_chot:'Card chốt / CTA',
                    nhac_nen:'Nhạc nền'};
 
+  /* Bản trước xếp 5 mục đánh số cùng trọng lượng, dọc một mạch — mà mục 1-3 chỉ làm
+     MỘT LẦN lúc lập dự án, còn mục 4 (chủ đề) mới là thứ mở ra hằng ngày. Kết quả:
+     thứ dùng nhiều nhất bị chôn dưới ba khối chỉ dùng một lần.
+     Giờ: cài đặt gập lại thành một dải tóm tắt, chủ đề lên đầu. Dự án CHƯA lập xong
+     thì bung sẵn cài đặt, vì lúc đó nó mới là việc duy nhất cần làm. */
+  const xong = !!p.work_dir && p.da_phan_tich;
+  const soLopBat = Object.values(lop).filter(Boolean).length;
   box.innerHTML = `
-    <div class="row" style="justify-content:space-between;align-items:flex-start">
+    <div class="workbar">
       <a class="link small" data-act="ve-home">← Về Home</a>
-      <div class="row" style="gap:6px">
+      <span class="muted small">${esc(p.quy_trinh_ten)}</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
         <button class="btn ghost sm" data-act="rename-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Đổi tên</button>
         <button class="btn danger sm" data-act="del-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Xoá dự án</button>
+      </span>
+    </div>
+
+    <details class="setup" ${xong?'':'open'}>
+      <summary>
+        <span class="tit">Cài đặt dự án</span>
+        <span class="sum">${p.work_dir
+          ? `${esc((p.record_path||'').split(/[\\/]/).pop() || p.work_dir)} · ${soLopBat}/7 lớp bật`
+            + (chon.sfx.length?` · ${chon.sfx.length} SFX chỉ định`:'')
+          : '<span class="neg">chưa gắn record</span>'}</span>
+      </summary>
+      <div class="inner">
+        <h3 class="sub">File record</h3>
+        ${p.work_dir ? `<div class="card">
+            <div class="mono" style="word-break:break-all">${esc(p.record_path||p.work_dir)}</div>
+            <div class="l" style="margin-top:6px">Không đổi được nữa — draft và cache đều bám theo nó.
+              Muốn record khác thì tạo dự án mới.</div>
+          </div>`
+         : `<div class="row">
+          <label class="fld" style="flex:1;min-width:220px"><span>Thư mục</span>
+            <input id="dirIn" value="${esc(PREF.get('dir',''))}" placeholder="đang lấy mặc định…"></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickDir" title="Mở hộp thoại chọn thư mục của Windows">Chọn thư mục…</button></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét lại</button></label>
+        </div>
+        <div class="row">
+          <label class="fld" style="flex:1;min-width:260px"><span>File record <span class="muted small">(quét cả thư mục con)</span></span>
+            <select id="fileSel"><option>— đang quét —</option></select></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickFile" title="Chọn thẳng một file bất kỳ trên máy">Chọn file…</button></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn" id="btnGanRecord">Dùng file này</button></label>
+        </div>
+        <p class="muted small" id="scanNote"></p>`}
+
+        <h3 class="sub">Tài nguyên đưa vào draft</h3>
+        <p class="muted small" style="margin:0 0 10px">Tắt lớp nào thì draft không có lớp đó.
+          Trong lớp đã bật, có thể chỉ định đúng những file được phép dùng — để trống là <b>cả kho</b>.</p>
+        <div class="lopgrid">
+          ${Object.keys(LOP_TEN).map(k=>`
+            <label class="lop"><input type="checkbox" data-lop="${k}" ${lop[k]?'checked':''}>
+              <span>${esc(LOP_TEN[k])}</span></label>`).join('')}
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn ghost sm" data-act="chon-sfx">Chọn SFX cụ thể${chon.sfx.length?` (${chon.sfx.length})`:''}</button>
+          <button class="btn sm" id="btnLuuCauHinh">Lưu cấu hình</button>
+        </div>
+
+        <h3 class="sub">Bóc lời &amp; trích chủ đề</h3>
+        <div class="row">
+          <label class="fld"><span>Độ chính xác bóc lời</span>
+            <select id="asrSel">
+              ${opt('tiny','tiny — nhanh nhất, SAI CHỮ NHIỀU',curAsr)}
+              ${opt('base','base — nhanh gấp ~2,7 lần small, sai chữ hơn',curAsr)}
+              ${opt('small','small — cân bằng (mặc định)',curAsr)}
+              ${opt('medium','medium — chuẩn nhất, chậm nhất',curAsr)}
+            </select></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn" id="btnIngest"
+            ${!p.work_dir ? 'disabled title="Chọn file record trước"'
+              : (!ed.keys.gemini ? 'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"' : '')}
+            >${p.da_phan_tich?'Phân tích lại':'Phân tích'}</button></label>
+        </div>
+        ${p.da_phan_tich?'<p class="muted small">Phân tích lại có thể ra danh sách chủ đề KHÁC — draft đã dựng vẫn giữ nguyên.</p>':''}
+        ${!ed.keys.gemini?`<div class="empty" style="text-align:left;padding:var(--spacing-16);border-color:var(--color-danger)">
+           <b>Thiếu GEMINI_API_KEY</b> Bóc lời xong vẫn KHÔNG trích được chủ đề.
+           Vào mục <b>Cài đặt</b> ở thanh bên để dán key — áp dụng ngay, không cần khởi động lại.
+         </div>`:''}
       </div>
-    </div>
+    </details>
 
-    <h2>1 · File record</h2>
-    ${p.work_dir ? `<div class="card" style="margin-bottom:var(--spacing-24)">
-        <div class="l">Đã gắn — không đổi được nữa vì draft và cache đều bám theo nó.</div>
-        <div class="mono" style="margin-top:6px;word-break:break-all">${esc(p.record_path||p.work_dir)}</div>
-      </div>`
-     : `<div class="row">
-      <label class="fld"><span>Thư mục</span>
-        <input id="dirIn" style="width:250px" value="${esc(PREF.get('dir',''))}" placeholder="đang lấy mặc định…"></label>
-      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickDir" title="Mở hộp thoại chọn thư mục của Windows">Chọn thư mục…</button></label>
-      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét lại</button></label>
-    </div>
-    <div class="row">
-      <label class="fld"><span>File record <span class="muted small">(quét cả thư mục con)</span></span>
-        <select id="fileSel" style="min-width:360px"><option>— đang quét —</option></select></label>
-      <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickFile" title="Chọn thẳng một file bất kỳ trên máy">Chọn file…</button></label>
-      <label class="fld"><span>&nbsp;</span><button class="btn" id="btnGanRecord">Dùng file này</button></label>
-    </div>
-    <p class="muted small" id="scanNote"></p>`}
-
-    <h2>2 · Tài nguyên đưa vào draft</h2>
-    <div class="card" style="margin-bottom:var(--spacing-24)">
-      <div class="l" style="margin-bottom:10px">Tắt lớp nào thì draft không có lớp đó. Trong lớp đã bật,
-        bạn có thể chỉ định đúng những file được phép dùng — để trống nghĩa là <b>cả kho</b>.</div>
-      <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-        ${Object.keys(LOP_TEN).map(k=>`
-          <label class="row" style="gap:8px;align-items:center;margin:0">
-            <input type="checkbox" data-lop="${k}" ${lop[k]?'checked':''}>
-            <span>${esc(LOP_TEN[k])}</span></label>`).join('')}
+    <div class="secthead" style="margin-top:var(--spacing-24)">
+      <div>
+        <h2 style="margin:0">Chủ đề</h2>
+        <p class="muted small" style="margin:4px 0 0" id="topicN"></p>
       </div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn ghost sm" data-act="chon-sfx">Chọn SFX cụ thể${chon.sfx.length?` (${chon.sfx.length})`:''}</button>
-        <button class="btn sm" id="btnLuuCauHinh">Lưu cấu hình</button>
-      </div>
-    </div>
-
-    <h2>3 · Phân tích record</h2>
-    <div class="row">
-      <label class="fld"><span>Bóc lời (tầng khảo sát)</span>
-        <select id="asrSel">
-          ${opt('tiny','tiny — nhanh nhất, SAI CHỮ NHIỀU',curAsr)}
-          ${opt('base','base — nhanh gấp ~2,7 lần small, sai chữ hơn',curAsr)}
-          ${opt('small','small — cân bằng (mặc định)',curAsr)}
-          ${opt('medium','medium — chuẩn nhất, chậm nhất',curAsr)}
-        </select></label>
-      <label class="fld"><span>&nbsp;</span><button class="btn" id="btnIngest"
-        ${!p.work_dir ? 'disabled title="Chọn file record trước"'
-          : (!ed.keys.gemini ? 'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"' : '')}
-        >${p.da_phan_tich?'Phân tích lại':'Phân tích'}</button></label>
-      ${p.da_phan_tich?'<span class="muted small">Phân tích lại có thể ra danh sách chủ đề KHÁC — draft đã dựng vẫn giữ nguyên.</span>':''}
-    </div>
-    ${!ed.keys.gemini?`<div class="empty" style="text-align:left;padding:var(--spacing-16);border-color:var(--color-danger)">
-       <b>Thiếu GEMINI_API_KEY</b> Bóc lời xong vẫn KHÔNG trích được chủ đề.
-       Vào mục <b>Cài đặt</b> ở thanh bên để dán key — áp dụng ngay, không cần khởi động lại.
-     </div>`:''}
-
-    <h2>4 · Chủ đề</h2>
-    <div class="row sticky">
-      <label class="fld"><span>Dựng theo gu editor</span>
+      <label class="fld" style="margin:0"><span>Dựng theo gu editor</span>
         <select id="edSel">${ed.editors.map(e=>opt(e, e, curEd || ed.editors[0])).join('')}</select></label>
-      <span class="muted small" id="topicN"></span>
-      <span class="muted small" style="margin-left:auto">Draft đặt tên <span class="mono">&lt;dự án&gt;_t&lt;chủ đề&gt;_&lt;editor&gt;</span> — dựng lại cùng gu sẽ ghi đè bản cũ.</span>
     </div>
     ${p.topics.length ? '<div class="plist" id="topicGrid"></div><div class="pager" id="topicPager"></div>'
-      : emptyBox(p.da_phan_tich?'Không có chủ đề nào đạt ngưỡng':'Chưa phân tích',
+      : emptyBox(p.da_phan_tich?'Không có chủ đề nào đạt ngưỡng':'Chưa phân tích record',
                  p.da_phan_tich?'Record này không có đoạn nào đủ điểm để làm short.'
-                               :'Gắn file record rồi bấm Phân tích ở bước 3.')}
+                               :'Mở "Cài đặt dự án" ở trên: gắn file record rồi bấm Phân tích.')}
 
-    <h2>5 · Cân bằng âm thanh</h2>
+    <div class="secthead" style="margin-top:var(--spacing-32)"><h2 style="margin:0">Cân bằng âm thanh</h2></div>
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
@@ -1292,7 +1345,7 @@ async function loadWork(){
       </div>
     </div>
 
-    <h2>Tiến trình</h2>
+    <div class="secthead" style="margin-top:var(--spacing-32)"><h2 style="margin:0">Tiến trình</h2></div>
     <div class="jobsBox"></div>`;
 
   if(!p.work_dir){
