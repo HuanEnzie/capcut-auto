@@ -93,9 +93,12 @@ def _luong_cpu() -> int:
         return int(v)
     try:
         import multiprocessing as mp
-        return max(1, mp.cpu_count() // 2)
+        # CHỪA LẠI MỘT NHÂN cho web server. Ăn hết nhân thật thì uvicorn không kịp
+        # trả lời /api/jobs, trình duyệt tưởng mất kết nối trong lúc đang bóc lời —
+        # đúng lúc người dùng nhìn chằm chằm vào thanh tiến trình.
+        return max(1, mp.cpu_count() // 2 - 1)
     except (ImportError, NotImplementedError):
-        return 4
+        return 3
 
 
 def transcribe(source: str, model_name: str = "small", device: str = "cuda") -> dict:

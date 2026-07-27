@@ -429,9 +429,20 @@ const PREF = {
    Mọi lỗi MẠNG quy về một banner. App đóng gói thì cửa sổ python có thể bị tắt
    hoặc crash — không báo thì mọi nút chỉ "im lặng không làm gì", người dùng
    tưởng app hỏng và bấm loạn lên. */
-let OFFLINE = false;
+/* Việc nặng (bóc lời) ăn hết CPU nên server thỉnh thoảng trả lời chậm -> một lượt
+   hỏi trượt là chuyện bình thường. Báo "mất kết nối" ngay lần đầu thì banner đỏ
+   nhấp nháy suốt lúc đang phân tích, làm người dùng tưởng app chết. Chỉ báo khi
+   trượt LIÊN TIẾP. */
+let OFFLINE = false, TRUOT = 0;
+const NGUONG_TRUOT = 3;
 function setOffline(v){
-  if(v === OFFLINE) return;
+  if(v){
+    TRUOT++;
+    if(TRUOT < NGUONG_TRUOT || OFFLINE) return;
+  } else {
+    TRUOT = 0;
+    if(!OFFLINE) return;
+  }
   OFFLINE = v; $('#offline').classList.toggle('on', v);
   if(!v) toast('Đã kết nối lại');
 }
