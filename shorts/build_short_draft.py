@@ -103,6 +103,30 @@ def khoa_khoang_cat(nguon: str, cuts) -> str:
 
 TOI_THIEU_GIAY = 0.35        # dưới mức này thì mắt không kịp đọc
 
+
+def tru_khoang(cuts: list, bo: tuple, toi_thieu: float = 2.5) -> list:
+    """Trừ khoảng `bo` ra khỏi danh sách khoảng cắt. Mảnh vụn ngắn hơn `toi_thieu`
+    thì bỏ luôn — dưới 2,5 giây không đủ thành một câu, chỉ là tiếng nấc.
+
+    2,5 giây chứ không phải 1 giây: ca thật của t2 có hook nằm cách đầu thân đúng
+    2 giây, để lại mảnh 2 giây DẪN VÀO chính câu vừa phát ở hook — nghe rất kỳ.
+
+    LỖI ĐÃ TRẢ GIÁ 27/07: hook được GHÉP THÊM lên đầu nhưng KHÔNG bị trừ khỏi thân,
+    nên cùng một câu phát HAI LẦN. Đo bằng tương quan chéo trên chính file đã xuất:
+    t2 trùng 0,95 ở giây 23,4 · t3 trùng 0,89 ở giây 21,0 — nghe rõ là lặp nguyên văn,
+    hỏng video ngay đoạn đầu.
+    """
+    a, b = bo
+    ra = []
+    for c0, c1 in cuts:
+        if b <= c0 or a >= c1:                  # không chạm nhau
+            ra.append((c0, c1)); continue
+        if c0 < a and a - c0 >= toi_thieu:      # phần còn lại phía TRƯỚC hook
+            ra.append((c0, a))
+        if c1 > b and c1 - b >= toi_thieu:      # phần còn lại phía SAU hook
+            ra.append((b, c1))
+    return ra
+
 def split_cue(st, en, text, max_chars=18):
     words = text.split(); lines, cur = [], ""
     for w in words:
@@ -170,13 +194,24 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         print(f"  [enrich]   {str(e).split('—')[0].strip()}")
         enr = None
     hook_dur = 0.0
+    cuts = body_cuts
     if enr and enr.get("hook"):
         ha, hb = snap(enr["hook"]["start_sec"], enr["hook"]["end_sec"], segs)
         hook_cut = (max(0, ha - 0.2), hb + 0.2)
-        cuts = [hook_cut] + body_cuts            # cold-open: hook lên đầu
-        hook_dur = hook_cut[1] - hook_cut[0]
-    else:
-        cuts = body_cuts
+        # PHẢI TRỪ hook khỏi thân. Gemini chọn hook là "khoảnh khắc ấn tượng nhất
+        # TRONG đoạn", nên hook gần như luôn nằm sẵn trong thân — ghép lên đầu mà
+        # không trừ đi thì cùng một câu phát hai lần, hỏng video ngay đoạn đầu.
+        con_lai = tru_khoang(body_cuts, hook_cut)
+        if con_lai:
+            cuts = [hook_cut] + con_lai
+            hook_dur = hook_cut[1] - hook_cut[0]
+            bo = sum(b - a for a, b in body_cuts) - sum(b - a for a, b in con_lai)
+            if bo > 0.05:
+                print(f"  [hook] đưa {hook_dur:.1f}s lên đầu, trừ khỏi thân "
+                      f"{bo:.1f}s để không phát lại hai lần")
+        else:
+            # Hook nuốt trọn thân -> chính nó LÀ nội dung, để nguyên chỗ cũ.
+            print("  [hook] hook trùm cả đoạn -> giữ nguyên mạch, không tách cold-open")
 
     def src_to_out(sec, snap_within=3.0):
         """map giây NGUỒN -> giây trong short (theo cuts, tính cold-open).

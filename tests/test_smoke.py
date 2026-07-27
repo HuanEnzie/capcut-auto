@@ -332,6 +332,32 @@ def test_nghi_theo_tung_model_khong_theo_ca_key(monkeypatch):
     g._NGHI.clear()
 
 
+def test_hook_khong_phat_lai_hai_lan():
+    """Bug đã gặp 27/07: hook được GHÉP THÊM lên đầu nhưng KHÔNG trừ khỏi thân, nên
+    cùng một câu phát HAI LẦN. Đo bằng tương quan chéo trên file đã xuất: t2 trùng
+    0,95 ở giây 23,4 · t3 trùng 0,89 ở giây 21,0 — hỏng video ngay đoạn đầu.
+    Gemini chọn hook là 'khoảnh khắc ấn tượng nhất TRONG đoạn' nên hook GẦN NHƯ LUÔN
+    nằm sẵn trong thân — đây là trường hợp thường, không phải ngoại lệ."""
+    import build_short_draft as bsd
+
+    # hook nằm GIỮA thân (đúng ca của t3: thân 1739-1826, hook 1753-1756)
+    ra = bsd.tru_khoang([(1739.0, 1826.0)], (1753.0, 1756.0))
+    assert (1739.0, 1753.0) in ra and (1756.0, 1826.0) in ra
+    for a, b in ra:
+        assert not (a < 1756.0 and b > 1753.0), f"khoảng {a}-{b} vẫn chứa hook"
+
+    # hook ở SÁT ĐẦU thân (ca của t2: thân 2173-2241, hook 2175-2178)
+    ra = bsd.tru_khoang([(2173.0, 2241.0)], (2175.0, 2178.0))
+    assert all(not (a < 2178.0 and b > 2175.0) for a, b in ra)
+    assert (2173.0, 2175.0) not in ra, "mảnh 2 giây là tiếng nấc, phải bỏ"
+
+    # hook KHÔNG chạm thân thì giữ nguyên
+    assert bsd.tru_khoang([(100.0, 200.0)], (10.0, 13.0)) == [(100.0, 200.0)]
+
+    # hook trùm cả thân -> trả rỗng để caller biết mà giữ nguyên mạch
+    assert bsd.tru_khoang([(50.0, 55.0)], (49.0, 56.0)) == []
+
+
 def test_caption_khong_co_dong_qua_ngan():
     """Đo trên draft thật 27/07: 15/89 dòng dưới 0,3 giây, gần như toàn 'chữ mồ côi'
     ở cuối cue ('xa.', 'biết.', 'giờ') — chia thời lượng theo số ký tự nên dòng 3 ký
