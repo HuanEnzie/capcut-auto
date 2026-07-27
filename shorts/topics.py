@@ -137,6 +137,24 @@ def _trung_nhau(a: dict, b: dict) -> float:
     return chung / nho if nho > 0 else 0.0
 
 
+def loc_theo_hang(ds: list, dai_giay: float, toi_thieu: int = 5) -> tuple:
+    """Giữ N chủ đề ĐIỂM CAO NHẤT, N theo thời lượng record. Trả (giữ, dự bị).
+
+    VÌ SAO BỎ NGƯỠNG TUYỆT ĐỐI (`min_total_score`): điểm KHÔNG so sánh được giữa các
+    model. Đo 27/07 trên cùng một record, cùng một profile:
+        gemini-3.6-flash      -> điểm cao nhất 7,6 · ngưỡng 5,0 bỏ 0/12 chủ đề
+        gemini-3.1-pro        -> điểm cao nhất 6,9 · ngưỡng 5,0 bỏ 8/20 chủ đề
+    Cùng ngưỡng, model chấm khắt hơn thì bị gạt 40% trong khi model rộng tay bị gạt 0.
+    Ngưỡng hoá ra đang đo ĐỘ RỘNG TAY CỦA MODEL chứ không đo chất lượng chủ đề. Đổi
+    model là phải chỉnh tay lại, mà dự án còn định thêm nhà cung cấp ngoài Google.
+
+    Điểm dùng để XẾP THỨ TỰ thì đáng tin; dùng làm NGƯỠNG CẮT thì không. Nên cắt theo
+    thứ hạng — thứ không phụ thuộc thang điểm của bất kỳ model nào.
+    """
+    n = max(toi_thieu, round(dai_giay / 60 / PHUT_MOI_CHU_DE)) if dai_giay else toi_thieu
+    return ds[:n], ds[n:]
+
+
 def gop_chu_de(ds: list, nguong: float = 0.5) -> list:
     """Khử trùng chủ đề sinh ra từ hai cửa sổ chồng lấn.
 
@@ -248,6 +266,9 @@ def extract_topics(work: Path, profile_path: str, model: str, dry: bool):
                     response_schema=TopicList,
                     max_output_tokens=32000,
                 ),
+                # Trích chủ đề là chỗ cần PHÁN ĐOÁN: chọn sai đoạn thì mọi bước sau
+                # có tốt cũng vô ích. Dùng chuỗi ưu tiên model mạnh.
+                chain=gemini_util.CHUOI_CHAT_LUONG,
             )
         except gemini_util.HetHanNgach:
             # Cạn hạn ngạch giữa chừng: giữ phần đã tìm được thay vì mất trắng. Nhưng
@@ -272,8 +293,7 @@ def extract_topics(work: Path, profile_path: str, model: str, dry: bool):
     if truoc_gop != len(topics):
         print(f"\nGộp trùng ở vùng chồng lấn: {truoc_gop} -> {len(topics)} chủ đề")
     topics.sort(key=lambda x: x["total_score"], reverse=True)
-    min_score = profile.get("min_total_score", 0)
-    kept = [t for t in topics if t["total_score"] >= min_score]
+    kept, du_bi = loc_theo_hang(topics, dai)
 
     # ĐỘ PHỦ: bao nhiêu phần trăm record được dùng. Đây là chỉ số để biết chia cửa sổ
     # có ăn thua không — trước khi chia, record 58 phút chỉ dùng 9,5%, bỏ phí 52 phút.
@@ -281,15 +301,19 @@ def extract_topics(work: Path, profile_path: str, model: str, dry: bool):
     phu = dung / dai * 100 if dai else 0
     nhieu_doan = sum(1 for t in kept if len(t["segments"]) > 1)
 
+    # Dự bị KHÔNG bị vứt đi — ghi lại kèm điểm. Cắt bớt trong im lặng là app nói dối:
+    # người dùng nhìn 15 chủ đề mà tưởng record chỉ có ngần đó (docs/UI.md mục 6).
     out = {"source": transcript["source"], "model": model,
            "profile": profile["name"], "n_topics": len(kept),
-           "topics": kept, "topics_below_threshold": len(topics) - len(kept),
+           "topics": kept, "topics_du_bi": du_bi,
            "do_phu_pct": round(phu, 1), "n_cua_so": len(cua_so),
            "n_nhieu_doan": nhieu_doan}
     cache = work / "topics.json"
     cache.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"\n✅ {len(kept)} chủ đề (bỏ {len(topics)-len(kept)} dưới ngưỡng {min_score}) -> {cache.name}")
+    print(f"\n✅ {len(kept)} chủ đề -> {cache.name}"
+          + (f" · {len(du_bi)} cái nữa để DỰ BỊ (điểm cao nhất trong nhóm dự bị: "
+             f"{du_bi[0]['total_score']:.1f})" if du_bi else ""))
     print(f"   độ phủ {phu:.1f}% record ({dung/60:.0f}/{dai/60:.0f} phút) · "
           f"{nhieu_doan}/{len(kept)} chủ đề ghép nhiều đoạn\n")
     for i, t in enumerate(kept, 1):
@@ -303,7 +327,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("work", nargs="?", help="thư mục work/<recording> (chứa transcript.*.json)")
     ap.add_argument("--profile", default=str(Path(__file__).parent / "profiles" / "meeting.yaml"))
-    ap.add_argument("--model", default="gemini-2.5-flash",
+    ap.add_argument("--model", default="gemini-3.1-pro-preview",
                     help="chạy --list-models để xem model 3.5 hiện có")
     ap.add_argument("--dry", action="store_true", help="chỉ in prompt + ước lượng, không gọi API")
     ap.add_argument("--list-models", action="store_true")

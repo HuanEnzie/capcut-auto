@@ -384,6 +384,28 @@ def test_chia_cua_so_phu_het_record():
     assert len(tp.chia_cua_so(3462)) >= 3, "record 58 phút phải chia nhiều hơn 1 cửa sổ"
 
 
+def test_loc_chu_de_theo_hang_khong_theo_nguong_diem():
+    """Bug đã gặp 27/07: ngưỡng tuyệt đối min_total_score=5.0 hoá ra đo ĐỘ RỘNG TAY
+    CỦA MODEL chứ không đo chất lượng. Cùng record, cùng profile: flash chấm cao nhất
+    7,6 -> bỏ 0/12; pro chấm cao nhất 6,9 -> bỏ 8/20. Đổi model là phải chỉnh tay lại,
+    mà dự án còn định thêm nhà cung cấp ngoài Google."""
+    import topics as tp
+    # thang điểm THẤP (model chấm khắt) — không được vì thế mà mất hết chủ đề
+    khat = [{"total_score": 6.9 - i * 0.1} for i in range(20)]
+    giu, du = tp.loc_theo_hang(khat, 58 * 60)
+    assert len(giu) >= 5, "model chấm khắt không được làm mất sạch chủ đề"
+    assert len(giu) + len(du) == 20, "chủ đề dôi ra phải vào DỰ BỊ, không được vứt đi"
+
+    # thang điểm CAO (model rộng tay) — cùng số lượng thì phải giữ y hệt
+    rong = [{"total_score": 9.5 - i * 0.1} for i in range(20)]
+    giu2, _ = tp.loc_theo_hang(rong, 58 * 60)
+    assert len(giu) == len(giu2), "thang điểm khác nhau mà số giữ lại phải như nhau"
+
+    # record ngắn thì giữ ít hơn, nhưng không bao giờ về 0
+    giu3, _ = tp.loc_theo_hang(khat, 5 * 60)
+    assert 0 < len(giu3) <= len(giu)
+
+
 def test_gop_chu_de_khu_trung_o_vung_chong_lan():
     """Vùng chồng lấn sinh ra cùng một chủ đề hai lần — phải khử, và giữ bản ĐIỂM CAO."""
     import topics as tp

@@ -102,6 +102,9 @@ def lam_sach_toan_bo(transcript: dict, model: str) -> int:
                 config=types.GenerateContentConfig(
                     system_instruction=SYS, response_mime_type="application/json",
                     response_schema=Corrected, max_output_tokens=32000),
+                # Sửa chính tả là việc CƠ HỌC: flash nhanh hơn pro nhiều lần mà kết
+                # quả không khác mấy, lại chạy nhiều lô liên tiếp nên chênh lệch cộng dồn.
+                chain=gemini_util.CHUOI_CO_HOC,
             )
             sua = {l.id: l for l in resp.parsed.lines}
             for i, s in enumerate(chunk):

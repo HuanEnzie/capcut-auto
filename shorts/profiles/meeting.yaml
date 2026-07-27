@@ -3,7 +3,11 @@ name: "Họp / hội thảo"
 language: "Tiếng Việt"
 target_duration: [60, 180]        # độ dài mong muốn mỗi short (giây)
 standalone_required: true          # đoạn phải hiểu được khi tách riêng
-min_total_score: 5.0               # dưới ngưỡng này thì loại
+# min_total_score: KHÔNG DÙNG NỮA (bỏ 27/07/2026). Điểm không so sánh được giữa các
+# model — cùng record cùng profile: flash chấm cao nhất 7,6 (ngưỡng 5,0 bỏ 0 chủ đề),
+# pro chấm cao nhất 6,9 (cùng ngưỡng bỏ 8/20). Ngưỡng hoá ra đo ĐỘ RỘNG TAY CỦA MODEL
+# chứ không đo chất lượng. Nay cắt theo THỨ HẠNG (topics.loc_theo_hang) — không phụ
+# thuộc thang điểm của bất kỳ nhà cung cấp nào, kể cả khi thêm model ngoài Google.
 
 criteria:                          # LLM chấm từng tiêu chí 1-10; code nhân trọng số
   decision:

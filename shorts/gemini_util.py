@@ -34,6 +34,26 @@ FALLBACKS = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini
 FALLBACKS_CHAT = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
                   "gemini-2.5-flash", "gemini-3.5-flash", "gemini-2.0-flash"]
 
+# Chuỗi CHẤT LƯỢNG CAO: cho việc cần PHÁN ĐOÁN chứ không phải xử lý cơ học —
+# trích chủ đề là chỗ quyết định short nào đáng làm, sai ở đây thì mọi bước sau vô ích.
+#
+# XẾP THEO VIỆC, KHÔNG XẾP THEO GIÁ. Chuỗi cũ ưu tiên model rẻ vì bậc Free chỉ có
+# RPD 20; từ 27/07 tài khoản lên bậc 3 nên nút thắt không còn là hạn ngạch nữa.
+# Vẫn giữ flash/lite ở cuối: app này còn cài trên máy khác có thể vẫn dùng bậc Free,
+# và cơ chế lùi model chỉ thật sự chạy sau khi vá `_cho_nghi` theo từng model.
+#
+# ĐO 27/07 bằng client.models.list(): 3 model pro dưới đây đều có thật với tài khoản
+# này. Đừng thêm tên đoán mò — 'gemini-3-flash' từng 404, mà 404 không phải lỗi quá
+# tải nên vòng thử lại bỏ qua luôn, cả cơ chế dự phòng thành vô dụng đúng lúc cần.
+CHUOI_CHAT_LUONG = ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro",
+                    "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash",
+                    "gemini-3.5-flash-lite"]
+
+# Việc CƠ HỌC (sửa chính tả hàng loạt): flash nhanh hơn pro nhiều lần mà kết quả
+# không khác mấy, lại chạy 7 lô liên tiếp nên chênh lệch tốc độ cộng dồn rất rõ.
+CHUOI_CO_HOC = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash",
+                "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+
 OVERLOADED = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "overloaded")
 HET_NGAY = ("PerDay", "per day", "daily limit", "RequestsPerDay")
 

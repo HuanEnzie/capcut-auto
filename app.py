@@ -34,6 +34,14 @@ WORK = ROOT / "shorts" / "work"
 
 assetlib.khoi_tao(im_lang=False)      # máy mới cài: tạo sẵn thư mục dữ liệu
 
+# Model mặc định TÁCH THEO VIỆC. Trích chủ đề cần PHÁN ĐOÁN -> model mạnh; sửa chính
+# tả là việc CƠ HỌC chạy nhiều lô liên tiếp -> model nhanh. Cả hai đều có chuỗi lùi
+# (gemini_util.CHUOI_*) nên máy dùng bậc Free vẫn chạy, chỉ là lùi xuống flash/lite.
+# Phải khai ở ĐẦU FILE: tham số mặc định của hàm được tính lúc `def` chạy, khai ở giữa
+# file thì mọi endpoint phía trên ném NameError ngay khi import.
+MODEL_CHAT_LUONG = "gemini-3.1-pro-preview"
+MODEL_CO_HOC = "gemini-3.6-flash"
+
 app = FastAPI(title="CapCut Auto Editor")
 
 # Font đóng gói kèm app. KHÔNG dùng Google Fonts: CSS của nó chặn render, máy cài
@@ -419,7 +427,7 @@ def api_transcript(pid: int):
 
 
 @app.post("/api/app-projects/{pid}/transcript/lam-sach")
-def api_transcript_lam_sach(pid: int, model: str = "gemini-2.5-flash"):
+def api_transcript_lam_sach(pid: int, model: str = MODEL_CO_HOC):
     """Làm sạch nốt những dòng còn chữ thô của transcript ĐANG DÙNG.
 
     Cần vì bản bóc kỹ (transcript.fine.json) sinh ra ở bước dựng draft, sau lượt làm
@@ -653,8 +661,8 @@ def api_pick(kieu: str = "thu_muc"):
 
 
 @app.post("/api/ingest")
-def api_ingest(path: str, asr: str = "small", model: str = "gemini-2.5-flash",
-               device: str = "cuda", work: str = ""):
+def api_ingest(path: str, asr: str = "small", model: str = MODEL_CHAT_LUONG,
+               device: str = "cuda", work: str = "", model_sach: str = MODEL_CO_HOC):
     """LUỒNG ĐẦU: record thô -> transcript -> trích chủ đề -> hiện ở màn hình dự án.
 
     `work` = thư mục làm việc của DỰ ÁN gọi tới. Không truyền thì suy từ tên file như
@@ -678,8 +686,8 @@ def api_ingest(path: str, asr: str = "small", model: str = "gemini-2.5-flash",
             # LÀM SẠCH TRƯỚC KHI TRÍCH CHỦ ĐỀ. Trước đây bản sạch chỉ dùng cho caption
             # ở cuối, còn bước trích chủ đề đọc chữ thô đầy lỗi -> Gemini vừa phải
             # đoán người ta nói gì vừa tìm chủ đề. Chọn sai đoạn là hỏng từ gốc.
-            print(f"[2/3] Làm sạch transcript ({model})...")
-            if cf.lam_sach_toan_bo(sv, model):
+            print(f"[2/3] Làm sạch transcript ({model_sach})...")
+            if cf.lam_sach_toan_bo(sv, model_sach):
                 (wd / "transcript.survey.json").write_text(
                     json.dumps(sv, ensure_ascii=False), encoding="utf-8")
 
@@ -942,7 +950,7 @@ def api_editors():
 
 
 @app.post("/api/project/{proj}/generate")
-def api_generate(proj: str, topic: int, editor: str = "shared", model: str = "gemini-2.5-flash"):
+def api_generate(proj: str, topic: int, editor: str = "shared", model: str = MODEL_CHAT_LUONG):
     """LUỒNG CHÍNH: chọn chủ đề + editor -> dựng draft CapCut theo gu editor đó."""
     work = (WORK / proj).resolve()
     if not (work / "topics.json").exists():
