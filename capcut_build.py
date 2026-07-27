@@ -29,8 +29,42 @@ _DUMP = dict(ensure_ascii=False, separators=(",", ":"))
 def uid():
     return str(uuid.uuid4()).upper()
 
+# Draft MẪU (donor) mà builder clone cấu trúc ra. Trước đây chỉ đọc từ thư mục
+# CapCut của máy dev -> máy khác build chạy hết 10 phút rồi mới chết ở dòng cuối
+# vì không có '282new'. Giờ đóng gói kèm app trong assets/donor/.
+DONOR_DIR = assetlib.ROOT / "assets" / "donor"
+
+
+def _duong_dan_mau(name: str) -> Path:
+    for p in (DONOR_DIR / name, DRAFTS_ROOT / name):
+        if (p / "draft_content.json").is_file():
+            return p
+    raise FileNotFoundError(
+        f"Không thấy draft mẫu '{name}'. Nó phải nằm trong assets/donor/{name}/ "
+        f"(đi kèm app) hoặc trong thư mục draft của CapCut.")
+
+
+def _doi_cache_ve_may_nay(s: str) -> str:
+    """Draft mẫu giữ đường dẫn cache CapCut của MÁY LÀM RA NÓ. Chép sang máy khác
+    là trỏ vào thư mục không tồn tại -> CapCut đòi chọn lại file. Đổi phần gốc
+    sang cache của máy đang chạy; gói nào thiếu thì asset_restore --restore cài."""
+    moi = str(assetlib.cache_root()).replace("\\", "/")
+    s = re.sub(r"[A-Za-z]:/[^\"]*?/User Data/Cache/", moi + "/", s)
+    s = re.sub(r"[A-Za-z]:\\\\\\\\[^\"]*?\\\\\\\\User Data\\\\\\\\Cache\\\\\\\\",
+               moi.replace("/", "\\\\\\\\") + "\\\\\\\\", s)
+    return s
+
+
+def kiem_tra_draft_mau(*names) -> None:
+    """Gọi NGAY ĐẦU build. Thiếu draft mẫu thì báo luôn, đừng để chạy xong
+    transcribe + Gemini + render rồi mới chết."""
+    for n in names:
+        _duong_dan_mau(n)
+
+
 def load_draft(name):
-    return json.load(open(DRAFTS_ROOT / name / "draft_content.json", encoding="utf-8"))
+    p = _duong_dan_mau(name) / "draft_content.json"
+    return json.loads(_doi_cache_ve_may_nay(p.read_text(encoding="utf-8", errors="replace")))
 
 def find_mat(content, mid):
     """Trả về (tên_mảng, material) chứa id này trong donor."""
@@ -502,7 +536,8 @@ def build(folder, out_name, model_name, do_write, caption_mode="template",
     with open(out_dir / "draft_content.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(c, **_DUMP))
     # draft_meta_info.json tối thiểu (dựa donor 0720)
-    meta = copy.deepcopy(json.load(open(DRAFTS_ROOT / DONOR_TEXT / "draft_meta_info.json", encoding="utf-8")))
+    meta = copy.deepcopy(json.loads((_duong_dan_mau(DONOR_TEXT) / "draft_meta_info.json")
+                                    .read_text(encoding="utf-8", errors="replace")))
     meta["draft_id"] = uid()
     meta["draft_name"] = out_name
     meta["draft_fold_path"] = str(out_dir).replace("\\", "/")

@@ -159,6 +159,7 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
     fixed = fix_captions(work, model)
     cues = captions_for_cuts(cuts, segs, fixed)
 
+    cb.kiem_tra_draft_mau(DONOR_V, DONOR_T)   # thiếu thì báo NGAY, đừng chạy 10 phút rồi mới chết
     dv, dt = cb.load_draft(DONOR_V), cb.load_draft(DONOR_T)
     unit = cb.extract_caption_unit(dt)
 
@@ -512,7 +513,8 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         if am.get("path"):
             regs.append(dm_entry(am["path"], "music", am.get("duration", 0), 0, 0))
 
-    meta = json.loads((DRAFTS / DONOR_T / "draft_meta_info.json").read_text(encoding="utf-8"))
+    meta = json.loads((cb._duong_dan_mau(DONOR_T) / "draft_meta_info.json")
+                      .read_text(encoding="utf-8", errors="replace"))
     groups = meta.get("draft_materials", []) or []
     for g in groups:
         if isinstance(g.get("value"), list):

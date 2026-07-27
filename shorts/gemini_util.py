@@ -23,7 +23,12 @@ import os, time
 # KIỂM CHỨNG bằng client.models.list() — 'gemini-3-flash' trong danh sách cũ trả
 # 404 với tài khoản này, mà 404 không phải lỗi quá tải nên vòng thử lại bỏ qua
 # luôn: cả cơ chế dự phòng thành vô dụng đúng lúc cần nhất.
-FALLBACKS = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.0-flash"]
+# Ba model đầu đều RPD 20. Một lượt dựng draft gọi enrich + caption_fix + topics
+# nhiều lần -> cạn sạch giữa chừng, và chết ở PHÚT THỨ MƯỜI sau khi đã bóc lời và
+# render xong. Nối thêm hai model RPD 500 ở CUỐI: chất lượng thấp hơn nhưng có kết
+# quả vẫn hơn hỏng cả lượt build.
+FALLBACKS = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.0-flash",
+             "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 
 # Chuỗi HẠN NGẠCH: cho vòng lặp chat/tool gọi nhiều lần. RPD 500 thay vì 20.
 FALLBACKS_CHAT = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite",

@@ -226,3 +226,43 @@ def test_giao_dien_khong_dung_hop_thoai_trinh_duyet():
             la_ghi_chu = "//" in truoc or "/*" in truoc or dong.strip().startswith(("*", "/*"))
             if cam in dong and "confirmBox" not in dong and not la_ghi_chu:
                 pytest.fail(f"ui.html còn dùng {cam} -> {dong.strip()[:60]}")
+
+
+# ─────────────── draft mẫu (donor) — lỗi bắt được trên máy trạm 26/07 ───────────────
+
+def test_draft_mau_di_theo_app():
+    """Bug đã gặp: donor '282new' chỉ nằm trong thư mục CapCut của máy dev. Máy khác
+    build chạy hết 10 phút rồi mới chết ở dòng cuối vì FileNotFoundError."""
+    import capcut_build as cb
+    for ten in {cb.DONOR_VIDEO, "282new"}:
+        p = cb.DONOR_DIR / ten
+        if p.is_dir():
+            assert (p / "draft_content.json").is_file()
+            return
+    pytest.fail("không có draft mẫu nào trong assets/donor/ — máy mới sẽ không build được")
+
+
+def test_draft_mau_doi_duong_dan_cache_ve_may_dang_chay(monkeypatch):
+    """Draft mẫu giữ đường dẫn cache của máy làm ra nó -> máy khác mở là CapCut
+    đòi chọn lại file."""
+    import json as _j
+    import capcut_build as cb
+    monkeypatch.setattr(assetlib, "cache_root",
+                        lambda: Path(r"C:/May/Khac/CapCut/User Data/Cache"))
+    s = _j.dumps(cb.load_draft("282new"), ensure_ascii=False)
+    assert "May/Khac" in s, "không đổi đường dẫn cache sang máy đang chạy"
+    assert "Users/Acer" not in s.replace("\\", "/"), "còn sót đường dẫn máy dev"
+
+
+def test_bao_ngay_khi_thieu_draft_mau():
+    import capcut_build as cb
+    with pytest.raises(FileNotFoundError):
+        cb.kiem_tra_draft_mau("khong-co-draft-mau-nay")
+
+
+def test_chuoi_structured_output_co_model_han_ngach_cao():
+    """Bug đã gặp: chuỗi structured output toàn model RPD 20 -> cạn giữa chừng,
+    build chết ở phút thứ mười."""
+    import gemini_util
+    assert any(m.endswith("-lite") for m in gemini_util.FALLBACKS), \
+        "phải có model RPD cao ở cuối chuỗi để hạ cánh mềm khi cạn hạn ngạch"
