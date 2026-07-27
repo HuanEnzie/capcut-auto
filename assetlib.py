@@ -8,7 +8,7 @@ Manifest: library.db (sqlite trong stdlib, không cần cài thêm).
 
   python assetlib.py --stats
 """
-import argparse, hashlib, os, re, shutil, sqlite3, time
+import argparse, hashlib, json, os, re, shutil, sqlite3, subprocess, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -137,7 +137,47 @@ def khoi_tao(im_lang: bool = True) -> list:
     return tao
 
 
-def sfx_kho(extra_dir: str = "") -> dict:
+# SFX là ĐIỂM NHẤN, không phải nhạc nền. Kho học từ draft lẫn cả file dài — đo
+# 27/07: 22/55 file dài ≥3s, trong đó có bản 67s và 29s. Chèn một file 67s vào short
+# 90s là đè lên toàn bộ giọng nói. Lọc theo độ dài thay vì bắt người dùng tự dọn kho.
+SFX_TOI_DA_GIAY = 3.0
+_DAI_SFX_CACHE = ASSETS / ".sfx_dai.json"
+_dai_cache: dict | None = None
+
+
+def _dai_sfx(p: Path) -> float | None:
+    """Độ dài file SFX, có cache trên đĩa — ffprobe 55 file mỗi lần gọi là quá đắt
+    cho một hàm nằm trong đường dựng draft. Khoá cache theo tên + kích thước."""
+    global _dai_cache
+    if _dai_cache is None:
+        try:
+            _dai_cache = json.loads(_DAI_SFX_CACHE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _dai_cache = {}
+    try:
+        khoa = f"{p.name}:{p.stat().st_size}"
+    except OSError:
+        return None
+    if khoa in _dai_cache:
+        return _dai_cache[khoa]
+    try:
+        o = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nokey=1:noprint_wrappers=1", str(p)],
+            capture_output=True, text=True, timeout=20).stdout.strip()
+        d = float(o)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None                              # đo không được thì GIỮ, đừng loại oan
+    _dai_cache[khoa] = d
+    try:
+        ASSETS.mkdir(parents=True, exist_ok=True)
+        _DAI_SFX_CACHE.write_text(json.dumps(_dai_cache), encoding="utf-8")
+    except OSError:
+        pass
+    return d
+
+
+def sfx_kho(extra_dir: str = "", loc_dai: bool = True) -> dict:
     """Tên hiển thị -> đường dẫn file SFX. Gộp thư mục chỉ định + KHO đã học.
 
     Trước đây hai chỗ hardcode thẳng 'E:/E Download/meme' (máy dev). Máy khác không
@@ -154,7 +194,23 @@ def sfx_kho(extra_dir: str = "") -> dict:
         if d and Path(d).is_dir():
             for f in sorted(Path(d).glob("*.mp3")):
                 ra[f.name] = f                          # thư mục chỉ định được ưu tiên
-    return ra
+    if not loc_dai:
+        return ra
+    ngan, bo = {}, []
+    for ten, f in ra.items():
+        d = _dai_sfx(f)
+        if d is None or d < SFX_TOI_DA_GIAY:
+            ngan[ten] = f
+        else:
+            bo.append((ten, d))
+    if bo:
+        # BÁO, đừng lọc im lặng: người dùng đặt tên file vào kho rồi không thấy nó
+        # trong draft mà chẳng hiểu vì sao là kiểu khó chịu nhất.
+        dai_nhat = sorted(bo, key=lambda x: -x[1])[:3]
+        print(f"  [sfx] bỏ {len(bo)}/{len(ra)} file dài ≥{SFX_TOI_DA_GIAY:.0f}s "
+              f"(vd {', '.join(f'{t} {d:.0f}s' for t, d in dai_nhat)}) — "
+              f"còn {len(ngan)} file dùng làm điểm nhấn")
+    return ngan
 
 
 def draft_root() -> Path:

@@ -449,6 +449,10 @@ def api_app_project_mot(pid: int):
                             "score": x.get("total_score"),
                             "dur": round(sum(s["end_sec"] - s["start_sec"]
                                              for s in x.get("segments", []))),
+                            # n_doan: chủ đề ghép nhiều đoạn rời thường ra short hay
+                            # hơn -> phải thấy được trên thẻ để người dùng ưu tiên.
+                            "n_doan": len(x.get("segments", [])),
+                            "tu": min([s["start_sec"] for s in x.get("segments", [])] or [0]),
                             "drafts": dtheo.get(i + 1, [])}
                            for i, x in enumerate(t.get("topics", []))]
         except (OSError, ValueError, KeyError):

@@ -8,6 +8,7 @@ shorts/work/
 renders/
 snapshots/
 assets/user/
+assets/.sfx_dai.json
 library.db
 *.bak
 quarantine/

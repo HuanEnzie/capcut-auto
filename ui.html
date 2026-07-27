@@ -281,27 +281,34 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
    Bố cục lấy ý từ màn hình chính CapCut: một nút TẠO nổi bật hẳn, bên dưới là các
    quy trình, dưới nữa là dự án đã có. Nhưng KHÔNG bê gradient/đổ bóng của CapCut về
    — luật 2 của docs/UI.md: bề mặt phẳng, phân tách bằng viền 2px. */
-.hero{border:var(--border-w) solid var(--color-eager-green);background:var(--color-storybook-green);
-      border-radius:var(--radius);padding:var(--spacing-32);text-align:center;margin-bottom:var(--spacing-24)}
-.hero h3{font-family:var(--font-feather);font-size:var(--text-heading-sm);font-weight:800;
-         color:var(--color-charcoal);margin-bottom:6px}
-.hero p{color:var(--color-pencil-gray);font-size:var(--text-caption);margin-bottom:var(--element-gap)}
+/* Đầu mục: nhãn mục + hành động chính CÙNG MỘT HÀNG. Trước đây nhãn mục 15px xám
+   đứng một mình dưới một khối xanh to đùng -> phân cấp lộn ngược, mắt không biết
+   nhìn đâu trước. */
+.secthead{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--element-gap);
+          flex-wrap:wrap;margin:0 0 var(--element-gap)}
 
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:var(--element-gap)}
 .tile{text-align:left;width:100%;background:var(--color-paper-white);cursor:pointer;
       border:var(--border-w) solid var(--color-hairline);border-radius:var(--radius);
-      padding:var(--card-padding);font-family:var(--font-body)}
-.tile:hover:not(:disabled){border-color:var(--color-eager-green)}
-.tile .ic{font-size:24px;line-height:1;margin-bottom:8px}
-.tile b{display:block;color:var(--color-charcoal);font-size:var(--text-subheading);margin-bottom:4px}
+      padding:var(--card-padding);font-family:var(--font-body);
+      display:flex;flex-direction:column;gap:6px}
+.tile.san:hover{border-color:var(--color-eager-green);background:var(--color-storybook-green)}
+/* Đầu thẻ cố định một hàng: icon trái, nhãn trạng thái phải. Trước đây nhãn "sắp có"
+   nằm chung dòng tiêu đề nên thẻ nào tên dài là nó rớt xuống dòng, mỗi thẻ một kiểu. */
+.tile .tilehd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tile .ic{font-size:26px;line-height:1}
+.tile b{display:block;color:var(--color-charcoal);font-size:var(--text-subheading);line-height:1.3}
 .tile .l{color:var(--color-pencil-gray);font-size:var(--text-caption);line-height:var(--leading-caption)}
 /* Quy trình chưa ra mắt: LÀM MỜ chứ không ẩn. Người dùng cần thấy app sẽ đi tới đâu,
    và biết thứ mình đang tìm là chưa có — thay vì đi tìm mòn mỏi trong menu. */
 .tile:disabled{cursor:not-allowed;background:#fafafa;border-style:dashed}
-.tile:disabled b, .tile:disabled .ic{opacity:.55}
+.tile:disabled b{color:var(--color-faded-gray)}
+.tile:disabled .ic, .tile:disabled .l{opacity:.5}
 
 /* Thẻ dự án / CapCut project */
-.plist{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:var(--element-gap)}
+/* auto-FILL chứ không auto-FIT: chỉ có 1 dự án thì auto-fit kéo thẻ giãn hết chiều
+   ngang màn hình, nhìn như một thanh dài chứ không ra cái thẻ. */
+.plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--element-gap)}
 .pcard{background:var(--color-paper-white);border:var(--border-w) solid var(--color-hairline);
        border-radius:var(--radius);padding:var(--card-padding);text-align:left;width:100%;
        font-family:var(--font-body);cursor:pointer}
@@ -310,6 +317,32 @@ pre{background:#fafafa;border:var(--border-w) solid var(--color-hairline);border
          margin-bottom:4px;word-break:break-word}
 .pcard .l{color:var(--color-pencil-gray);font-size:var(--text-caption)}
 .pcard .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+
+/* Thẻ dự án: icon to bên trái để quét mắt theo cột, tên là thứ ĐẬM NHẤT trong thẻ */
+.prj .prjhd{display:flex;gap:10px;align-items:flex-start}
+.prj .prjhd .ic{font-size:26px;line-height:1.1;flex:0 0 auto}
+.prj .prjhd .l{display:block}
+/* Số liệu tách hẳn khỏi chữ mô tả: "3 chủ đề · 3 dự án CapCut" trước đây trộn vào
+   một dòng xám nên không đọc ra ngay được cái nào là con số đáng quan tâm. */
+.prj .stats{display:flex;gap:var(--element-gap);flex-wrap:wrap;margin-top:12px;
+            padding-top:12px;border-top:var(--border-w) solid var(--color-hairline)}
+.prj .stats span{font-size:var(--text-caption);color:var(--color-pencil-gray)}
+.prj .stats b{display:inline;font-family:var(--font-feather);font-size:20px;
+              font-weight:800;color:var(--color-charcoal);margin-right:4px}
+
+/* Thẻ chủ đề: cao bằng nhau để so sánh được theo hàng, nút luôn nằm đáy thẻ */
+.tcard{display:flex;flex-direction:column}
+.tcard b{flex:0 0 auto;line-height:1.3}
+.tcard .acts{margin-top:auto;padding-top:10px}
+
+/* Phân trang — 16 chủ đề đổ một trang thì phải cuộn mãi mới so sánh được */
+.pager{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;
+       margin-top:var(--element-gap)}
+
+/* Hộp thoại cân bằng âm thanh cần rộng hơn cả .wide: bảng LUFS nhiều cột, nhét vào
+   modal hỏi-đáp mặc định (460px) là cuộn ngang liên tục. Dùng .wide có sẵn để
+   closeModal() tự gỡ giúp, chỉ nới thêm cho đúng nội dung dạng bảng. */
+.modal.wide.bang{max-width:min(900px, 94vw)}
 
 /* ══════════════════ THANH GẠT chế độ (Thường | Agent chat) ══════════════════
    Trước đây Agent là một mục trong sidebar, nằm lẫn với các khu vực — mà nó không
@@ -571,7 +604,7 @@ function openVeil(){
 }
 function closeModal(){
   $('#veil').classList.remove('on');
-  document.querySelector('.modal').classList.remove('wide');
+  document.querySelector('.modal').classList.remove('wide', 'bang');
   const f = MODAL_CLOSE; MODAL_CLOSE = null; if(f) f();
   if(MODAL_PREV && MODAL_PREV.isConnected) MODAL_PREV.focus();
   MODAL_PREV = null;
@@ -1072,42 +1105,61 @@ async function loadHome(){
   const [w, d] = await Promise.all([api('/api/workflows'), api('/api/app-projects')]);
   WF = w.workflows;
   const sanSang = WF.filter(x => x.san_sang);
+  /* Bản đầu có một khối xanh to đùng "Bắt đầu một dự án mới" chiếm 1/3 màn hình mà
+     không nói gì hữu ích, lại tranh chấp với chính hàng thẻ quy trình ngay dưới —
+     hai lời mời gọi cùng làm một việc. Bỏ nó: nút chính về cùng hàng với nhãn mục,
+     phần trên cùng dành cho thứ người dùng thật sự chọn. */
   box.innerHTML = `
-    <div class="hero">
-      <h3>Bắt đầu một dự án mới</h3>
-      <p>Mỗi dự án là một buổi ghi hình — và đẻ ra nhiều dự án CapCut sửa được.</p>
+    <div class="secthead">
+      <div>
+        <h2 style="margin:0">Quy trình</h2>
+        <p class="muted small" style="margin:4px 0 0">Mỗi dự án là một buổi ghi hình — và đẻ ra nhiều dự án CapCut sửa được.</p>
+      </div>
       <button class="btn" id="btnCreate">+ Tạo dự án</button>
     </div>
-
-    <h2>Quy trình</h2>
-    <div class="tiles" style="margin-bottom:var(--spacing-24)">
+    <div class="tiles" style="margin-bottom:var(--spacing-32)">
       ${WF.map(x=>`
-        <button class="tile" data-act="wf" data-ma="${esc(x.ma)}" ${x.san_sang?'':'disabled title="Quy trình này chưa ra mắt"'}>
-          <div class="ic">${esc(x.icon)}</div>
-          <b>${esc(x.ten)} ${x.san_sang?'':'<span class="tag">sắp có</span>'}</b>
+        <button class="tile${x.san_sang?' san':''}" data-act="wf" data-ma="${esc(x.ma)}"
+                ${x.san_sang?'':'disabled title="Quy trình này chưa ra mắt"'}>
+          <div class="tilehd">
+            <span class="ic">${esc(x.icon)}</span>
+            ${x.san_sang?'<span class="tag ok">dùng được</span>':'<span class="tag">sắp có</span>'}
+          </div>
+          <b>${esc(x.ten)}</b>
           <div class="l">${esc(x.mo_ta)}</div>
         </button>`).join('')}
     </div>
 
-    <h2>Dự án của bạn</h2>
+    <div class="secthead">
+      <h2 style="margin:0">Dự án của bạn</h2>
+      <span class="muted small">${d.projects.length} dự án</span>
+    </div>
     ${d.projects.length ? `<div class="plist">${d.projects.map(p=>`
-      <div class="pcard">
-        <b>${esc(p.quy_trinh_icon)} ${esc(p.ten)}</b>
-        <div class="l">${esc(p.quy_trinh_ten)}</div>
-        <div class="l" style="margin-top:6px">
-          ${p.work_dir ? `${p.so_chu_de} chủ đề · <b>${p.so_draft}</b> dự án CapCut`
-                       : '<span class="neg">chưa gắn record</span>'}
+      <div class="pcard prj">
+        <div class="prjhd">
+          <span class="ic">${esc(p.quy_trinh_icon)}</span>
+          <span style="min-width:0">
+            <b>${esc(p.ten)}</b>
+            <span class="l">${esc(p.quy_trinh_ten)}</span>
+          </span>
         </div>
+        ${p.work_dir ? `<div class="stats">
+            <span><b>${p.so_chu_de}</b> chủ đề</span>
+            <span><b>${p.so_draft}</b> dự án CapCut</span>
+          </div>`
+          : '<div class="l" style="margin-top:10px"><span class="tag bad">chưa gắn record</span></div>'}
         <div class="acts">
-          <button class="btn ghost sm" data-act="open-proj" data-id="${p.id}">Mở</button>
-          <button class="btn ghost sm" data-act="rename-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Đổi tên</button>
-          <button class="btn danger sm" data-act="del-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Xoá</button>
+          <button class="btn ghost sm" data-act="open-proj" data-id="${p.id}">Mở dự án</button>
+          <button class="btn ghost sm" data-act="rename-proj" data-id="${p.id}" data-ten="${esc(p.ten)}" title="Đổi nhãn hiển thị">Đổi tên</button>
+          <button class="btn danger sm" data-act="del-proj" data-id="${p.id}" data-ten="${esc(p.ten)}" title="Bỏ khỏi danh sách, giữ nguyên draft">Xoá</button>
         </div>
       </div>`).join('')}</div>`
-      : emptyBox('Chưa có dự án nào', 'Bấm "Tạo dự án" ở trên, chọn quy trình rồi nạp file record.')}
+      : emptyBox('Chưa có dự án nào', 'Chọn một quy trình ở trên, rồi nạp file record.')}
 
-    <h2>Tiến trình</h2>
-    <div id="jobs"></div>`;
+    <div class="secthead" style="margin-top:var(--spacing-32)">
+      <h2 style="margin:0">Tiến trình</h2>
+    </div>
+    <div class="jobsBox"></div>`;
   $('#btnCreate').onclick = () => chonQuyTrinh();
   pollJobs();
 }
@@ -1219,29 +1271,29 @@ async function loadWork(){
     <div class="row sticky">
       <label class="fld"><span>Dựng theo gu editor</span>
         <select id="edSel">${ed.editors.map(e=>opt(e, e, curEd || ed.editors[0])).join('')}</select></label>
-      <span class="muted small">Draft đặt tên <span class="mono">&lt;dự án&gt;_t&lt;chủ đề&gt;_&lt;editor&gt;</span> — dựng lại cùng gu sẽ ghi đè bản cũ.</span>
+      <span class="muted small" id="topicN"></span>
+      <span class="muted small" style="margin-left:auto">Draft đặt tên <span class="mono">&lt;dự án&gt;_t&lt;chủ đề&gt;_&lt;editor&gt;</span> — dựng lại cùng gu sẽ ghi đè bản cũ.</span>
     </div>
-    ${p.topics.length ? `<div class="wrap"><table>
-      <thead><tr><th>#</th><th>Chủ đề</th><th>Điểm</th><th>Dài</th><th>Đã dựng</th><th></th></tr></thead>
-      <tbody>${p.topics.map(t=>`<tr>
-        <td class="mono">${t.i}</td><td>${esc(t.title)}</td>
-        <td class="mono"><b>${t.score??''}</b></td><td class="mono">${t.dur}s</td>
-        <td>${t.drafts.map(x=>`<span class="tag ${x.locked?'bad':'ok'}"
-               title="${esc(x.name)} · ${x.locked?'đang mở trong CapCut · ':''}sửa lần cuối ${vnTime(x.mtime*1000)}"
-               >${esc(x.editor)}</span>`).join(' ') || '<span class="muted">—</span>'}</td>
-        <td class="actions">
-          <button class="btn ghost sm" data-act="preview" data-proj="${esc(p.work_dir)}" data-i="${t.i}">Xem trước</button>
-          <button class="btn ghost sm" data-act="gen" data-proj="${esc(p.work_dir)}" data-i="${t.i}">Tạo draft</button></td>
-      </tr>`).join('')}</tbody></table></div>`
+    ${p.topics.length ? '<div class="plist" id="topicGrid"></div><div class="pager" id="topicPager"></div>'
       : emptyBox(p.da_phan_tich?'Không có chủ đề nào đạt ngưỡng':'Chưa phân tích',
                  p.da_phan_tich?'Record này không có đoạn nào đủ điểm để làm short.'
                                :'Gắn file record rồi bấm Phân tích ở bước 3.')}
 
     <h2>5 · Cân bằng âm thanh</h2>
-    <div id="audioBox"></div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div>
+          <b>Chuẩn EBU R128</b>
+          <div class="l">giọng nói −14 LUFS · SFX −16 · nhạc nền −30 · trần true peak −1 dBTP</div>
+        </div>
+        <button class="btn ghost" data-act="mo-am-thanh"
+          ${p.drafts.length?'':'disabled title="Chưa có draft nào để đo"'}>
+          Đo &amp; cân bằng${p.drafts.length?` (${p.drafts.length} draft)`:''}</button>
+      </div>
+    </div>
 
     <h2>Tiến trình</h2>
-    <div id="jobs"></div>`;
+    <div class="jobsBox"></div>`;
 
   if(!p.work_dir){
     $('#btnBrowse').onclick = e => browse(e.currentTarget, true);
@@ -1254,9 +1306,74 @@ async function loadWork(){
   $('#asrSel').onchange = e => PREF.set('asr', e.target.value);
   $('#edSel').onchange  = e => PREF.set('editor', e.target.value);
   $('#btnLuuCauHinh').onclick = e => luuCauHinh(e.currentTarget);
-  loadAudioInto('#audioBox', p);
+  TOPIC_TRANG = 0;
+  veChuDe();
   pollJobs();
 }
+
+/* ---------- Lưới chủ đề + phân trang ----------
+   16 chủ đề đổ ra một bảng dài thì phải cuộn mãi mới thấy hết, mà mỗi dòng lại là
+   một quyết định "có làm cái này không". Thẻ cho thấy đủ thông tin để quyết ngay;
+   phân trang giữ trang ngắn để so sánh được các chủ đề cạnh nhau. */
+let TOPIC_TRANG = 0;
+const TOPIC_MOI_TRANG = 9;
+
+function veChuDe(){
+  const grid = $('#topicGrid'); if(!grid || !PROJ) return;
+  const ds = PROJ.topics || [];
+  const soTrang = Math.max(1, Math.ceil(ds.length / TOPIC_MOI_TRANG));
+  TOPIC_TRANG = Math.min(Math.max(0, TOPIC_TRANG), soTrang - 1);
+  const dau = TOPIC_TRANG * TOPIC_MOI_TRANG;
+  const trang = ds.slice(dau, dau + TOPIC_MOI_TRANG);
+  const w = PROJ.work_dir;
+
+  const n = $('#topicN');
+  if(n) n.textContent = `${ds.length} chủ đề · hiện ${dau+1}-${dau+trang.length}`;
+
+  grid.innerHTML = trang.map(t=>{
+    const dsD = t.drafts || [];
+    return `<div class="pcard tcard">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;margin:0">
+        <span class="tag">#${t.i}</span>
+        <span class="tag ${t.score>=7?'ok':(t.score>=6?'info':'')}" title="điểm tổng theo tiêu chí trong profile">${t.score??'—'}</span>
+      </div>
+      <b style="margin-top:8px">${esc(t.title)}</b>
+      <div class="l">${t.dur}s${t.n_doan>1?` · <b>${t.n_doan} đoạn ghép</b>`:''}${t.tu!=null?` · từ ${Math.floor(t.tu/60)}:${String(Math.floor(t.tu%60)).padStart(2,'0')}`:''}</div>
+      <div class="l" style="margin-top:6px">${dsD.length
+        ? dsD.map(x=>`<span class="tag ${x.locked?'bad':'ok'}" title="${esc(x.name)} · ${x.locked?'đang mở trong CapCut · ':''}sửa lần cuối ${vnTime(x.mtime*1000)}">${esc(x.editor)}</span>`).join(' ')
+        : '<span class="muted">chưa dựng draft</span>'}</div>
+      <div class="acts">
+        <button class="btn ghost sm" data-act="preview" data-proj="${esc(w)}" data-i="${t.i}">Xem trước</button>
+        <button class="btn ghost sm" data-act="gen" data-proj="${esc(w)}" data-i="${t.i}">Tạo draft</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const pg = $('#topicPager');
+  if(pg) pg.innerHTML = soTrang <= 1 ? '' : `
+    <button class="btn ghost sm" data-act="topic-trang" data-t="${TOPIC_TRANG-1}" ${TOPIC_TRANG?'':'disabled'}>← Trước</button>
+    ${Array.from({length: soTrang}, (_,i)=>
+      `<button class="btn ${i===TOPIC_TRANG?'':'ghost'} sm" data-act="topic-trang" data-t="${i}">${i+1}</button>`).join('')}
+    <button class="btn ghost sm" data-act="topic-trang" data-t="${TOPIC_TRANG+1}" ${TOPIC_TRANG<soTrang-1?'':'disabled'}>Sau →</button>`;
+}
+ACTIONS['topic-trang'] = d => { TOPIC_TRANG = +d.t; veChuDe(); };
+
+/* Cân bằng âm thanh mở trong hộp thoại: nó là việc LÀM MỘT LẦN sau khi dựng xong,
+   để nằm chình ình giữa màn hình làm việc thì đẩy phần chủ đề — thứ dùng thường
+   xuyên — xuống dưới. */
+ACTIONS['mo-am-thanh'] = async () => {
+  $('#mdTitle').textContent = 'Cân bằng âm thanh';
+  $('#mdBody').innerHTML = '<div id="audioBox" style="text-align:left"></div>';
+  $('#mdActs').innerHTML = '';
+  const dong = document.createElement('button');
+  dong.className = 'btn ghost'; dong.textContent = 'Đóng';
+  dong.onclick = () => { MODAL_CLOSE = null; closeModal(); };
+  $('#mdActs').appendChild(dong);
+  MODAL_CLOSE = () => {};
+  openVeil();
+  document.querySelector('#veil .modal').classList.add('wide', 'bang');
+  loadAudioInto('#audioBox', PROJ);
+};
 
 /* Hộp thoại chọn của Windows. Gõ tay đường dẫn là bắt làm việc không công, mà sai
    một ký tự thì chỉ báo "không thấy thư mục" chứ không chỉ sai chỗ nào. */
@@ -1363,7 +1480,10 @@ async function ingest(btn){
 async function gen(proj, topic, btn){
   const editor = $('#edSel').value;
   const name = `${proj}_t${topic}_${editor}`;
-  const t = PROJ?.projects.find(p => p.name === proj)?.topics.find(x => x.i === topic);
+  /* PROJ là MỘT dự án (từ /api/app-projects/{id}), không phải {projects:[...]} như
+     bản cũ. Đọc nhầm là ném TypeError ngay trong handler -> nút bấm không phản ứng
+     gì cả, đúng kiểu hỏng khó lần nhất: không toast, không log, chỉ "bấm không được". */
+  const t = (PROJ?.topics || []).find(x => x.i === topic);
   const old = (t?.drafts || []).find(x => x.name === name);
   if(old && old.locked)
     return modal({title:'Draft đang mở trong CapCut', body:
@@ -1443,7 +1563,11 @@ async function pollJobs(){
     bg.title = 'Bấm để xem tiến trình';
     bg.onclick = ()=>{ if($('#agent').hidden===false) setMode(false);
                        showTab('proj');
-                       setTimeout(()=>$('#jobs')?.scrollIntoView({behavior:'smooth'}),300); };
+                       setTimeout(()=>{
+    // cuộn tới khu tiến trình ĐANG HIỆN, không phải cái đầu tiên trong DOM
+    const t = [...document.querySelectorAll('.jobsBox')].find(b => b.offsetParent !== null);
+    t?.scrollIntoView({behavior:'smooth'});
+  }, 300); };
   } else bg.hidden = true;
 
   d.jobs.filter(j=>j.state!=='running' && !SEEN_DONE.has(j.id)).forEach(j=>{
@@ -1460,8 +1584,15 @@ async function pollJobs(){
   });
   if(!running.length && JOB_TIMER){ clearInterval(JOB_TIMER); JOB_TIMER=null; }
 
-  const box = $('#jobs'); if(!box) return;
-  if(!d.jobs.length){ box.innerHTML = '<p class="muted small">Chưa có việc nào chạy.</p>'; return; }
+  /* Khu tiến trình xuất hiện ở NHIỀU trang (Home và màn hình làm việc). Trước đây
+     cả hai cùng id="jobs" nên $('#jobs') luôn trúng cái ĐẦU trong DOM — nằm ở
+     section đang ẩn — và tiến trình vẽ vào chỗ không ai nhìn thấy. Dùng class rồi
+     vẽ vào MỌI chỗ, đúng chỗ nào đang hiện thì người dùng thấy chỗ đó. */
+  const hop = [...document.querySelectorAll('.jobsBox')]; if(!hop.length) return;
+  if(!d.jobs.length){
+    hop.forEach(b => b.innerHTML = '<p class="muted small">Chưa có việc nào chạy.</p>');
+    return;
+  }
   const html = d.jobs.slice(0,6).map(j=>{
     const p = jobProgress(j);
     const st = j.state==='running' ? '<span class="tag info">đang chạy</span>'
@@ -1482,7 +1613,7 @@ async function pollJobs(){
   }).join('');
   /* chỉ vẽ lại khi ĐỔI: vẽ lại mỗi 1.5s làm mất vệt bôi đen khi người dùng đang
      copy dòng log lỗi ra để hỏi. */
-  if(html !== JOBS_HTML){ JOBS_HTML = html; box.innerHTML = html; }
+  if(html !== JOBS_HTML){ JOBS_HTML = html; hop.forEach(b => b.innerHTML = html); }
 }
 ACTIONS.log  = d => fullLog(d.id);
 ACTIONS.open = async (d, el) => busy(el, 'Đang mở…', async () => {
