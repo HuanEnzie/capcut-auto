@@ -318,6 +318,42 @@ def test_work_dir_cho_phep_doi_record_di_cho(tmp_path, monkeypatch):
     transcribe.work_dir(str(b / "rec.mp4"))            # không được ném
 
 
+def test_chia_cua_so_phu_het_record():
+    """Bug đã gặp: nhồi cả transcript 58 phút vào MỘT lượt gọi -> 20 phút CUỐI không
+    sinh chủ đề nào, độ phủ 9,5%. Cửa sổ phải phủ kín [0, dài] và có chồng lấn để
+    chủ đề vắt qua ranh giới không bị cắt đôi."""
+    import topics as tp
+    for dai in (300, 900, 3462, 4 * 3600):
+        cs = tp.chia_cua_so(dai)
+        assert cs[0][0] == 0, f"dài {dai}: không bắt đầu từ 0"
+        assert abs(cs[-1][1] - dai) < 1, f"dài {dai}: bỏ sót phần cuối ({cs[-1][1]} != {dai})"
+        for (a1, b1), (a2, b2) in zip(cs, cs[1:]):
+            assert a2 < b1, f"dài {dai}: hai cửa sổ không chồng lấn -> mất chủ đề ở ranh giới"
+    assert len(tp.chia_cua_so(3462)) >= 3, "record 58 phút phải chia nhiều hơn 1 cửa sổ"
+
+
+def test_gop_chu_de_khu_trung_o_vung_chong_lan():
+    """Vùng chồng lấn sinh ra cùng một chủ đề hai lần — phải khử, và giữ bản ĐIỂM CAO."""
+    import topics as tp
+    a = {"title": "A", "total_score": 8.0, "segments": [{"start_sec": 100, "end_sec": 200}]}
+    b = {"title": "A lần 2", "total_score": 5.0, "segments": [{"start_sec": 110, "end_sec": 205}]}
+    c = {"title": "Khác hẳn", "total_score": 7.0, "segments": [{"start_sec": 900, "end_sec": 1000}]}
+    ra = tp.gop_chu_de([b, a, c])
+    assert len(ra) == 2, "không khử được bản trùng"
+    assert any(t["title"] == "A" for t in ra), "phải giữ bản điểm cao hơn"
+    assert not any(t["title"] == "A lần 2" for t in ra)
+
+
+def test_prompt_co_rang_buoc_so_luong_chu_de():
+    """Bug đã gặp: prompt chỉ quy định ĐỘ DÀI mỗi chủ đề, không nói cần BAO NHIÊU cái
+    -> model tự chọn ít cho chắc, record 1 tiếng ra đúng 3 chủ đề."""
+    import topics as tp
+    p = tp.load_profile(str(ROOT / "shorts" / "profiles" / "meeting.yaml"))
+    pr = tp.build_system_prompt(p, 0, 900, 4)
+    assert "ÍT NHẤT 4" in pr, "phải nêu số chủ đề tối thiểu cho cửa sổ"
+    assert "900" in pr or "15 phút" in pr, "phải nêu rõ cửa sổ đang xét"
+
+
 def test_moi_du_an_co_thu_muc_lam_viec_rieng(tmp_path, monkeypatch):
     """Hai dự án dùng chung MỘT record phải phân tích RIÊNG. Dùng chung thư mục thì
     dự án thứ hai thừa hưởng transcript + chủ đề + video nền của dự án thứ nhất —
