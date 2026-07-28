@@ -151,19 +151,38 @@ def split_cue(st, en, text, max_chars=18):
     for l in lines:
         d = (en - st) * len(l) / total
         out.append((t, t + d, l)); t += d
-    # Dòng vẫn quá ngắn thì MƯỢN thời lượng của dòng liền trước — thà dòng trước
-    # ngắn đi một chút còn hơn có dòng không ai đọc kịp.
-    for i in range(len(out) - 1, 0, -1):
-        a, b, l = out[i]
-        thieu = TOI_THIEU_GIAY - (b - a)
+    # KHÔNG đảm bảo sàn thời lượng ở đây nữa — xem dam_bao_san_thoi_luong().
+    #
+    # LỖI ĐÃ TRẢ GIÁ 28/07: bản vá đầu chỉ mượn thời lượng NỘI BỘ trong một lần gọi
+    # split_cue(). Nhưng caller còn CLAMP TOÀN CỤC sau đó (cue này đụng cue KHÁC —
+    # từ một segment gốc khác, ví dụ đoạn nói nhanh không nghỉ) để khỏi chồng lấn —
+    # bước đó không biết gì về sàn 0,35s nên cắt lại y hệt lỗi đã vá. Với người nói
+    # nhanh, nhiều cue LIÊN TIẾP (không chỉ một) bị domino cắt xuống dưới ngưỡng.
+    # Đo trên draft thật (kênh khác, người nói nhanh): 8 dòng liên tiếp 0,05-0,13s.
+    return out
+
+
+def dam_bao_san_thoi_luong(cues: list, toi_thieu: float = TOI_THIEU_GIAY) -> list:
+    """Đảm bảo sàn thời lượng cho MỌI cue, chạy TOÀN CỤC sau khi đã clamp chống
+    chồng lấn — thay vì cục bộ trong từng split_cue() rồi bị clamp đè lên.
+
+    Mượn từ cue liền trước, quét từ cuối lên đầu để việc mượn dây chuyền qua nhiều
+    cue vẫn đúng: cue nào cho mượn cũng được giữ lại tối thiểu `toi_thieu`, nên khi
+    vòng lặp xét tới chính nó (đã bị hụt từ lần cho mượn trước), nó không tụt xuống
+    dưới sàn nữa. Chỉ bó tay khi TỔNG thời lượng cả chuỗi cue liền kề không đủ chia —
+    trường hợp đó là nói quá nhanh, không phải lỗi thuật toán."""
+    cues = list(cues)
+    for i in range(len(cues) - 1, 0, -1):
+        a, b, l = cues[i]
+        thieu = toi_thieu - (b - a)
         if thieu <= 0:
             continue
-        pa, pb, pl = out[i - 1]
-        muon = min(thieu, max(0.0, (pb - pa) - TOI_THIEU_GIAY))
+        pa, pb, pl = cues[i - 1]
+        muon = min(thieu, max(0.0, (pb - pa) - toi_thieu))
         if muon > 0:
-            out[i - 1] = (pa, pb - muon, pl)
-            out[i] = (a - muon, b, l)
-    return out
+            cues[i - 1] = (pa, pb - muon, pl)
+            cues[i] = (a - muon, b, l)
+    return cues
 
 
 LOP_MAC_DINH = {"caption": True, "hook": True, "sfx": True, "emoji": True,
@@ -479,6 +498,9 @@ def build(work: Path, idx: int, sfx_path: str, model: str, dry: bool, name: str 
         nxt = short_cues[i + 1][0]
         if en > nxt:
             short_cues[i] = (st, nxt, tx)
+    # Sàn thời lượng phải áp dụng SAU clamp, trên TOÀN BỘ danh sách — clamp vừa rồi
+    # có thể cắt bất kỳ cue nào (kể cả cue từ segment gốc khác) xuống dưới ngưỡng.
+    short_cues = dam_bao_san_thoi_luong(short_cues)
     if lop.get("caption", True):
         add_text_track(short_cues, y=-0.72, scale=1.1, anim=True, font=p4["font"])
 

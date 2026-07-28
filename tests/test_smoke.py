@@ -400,7 +400,10 @@ def test_caption_khong_co_dong_qua_ngan():
 
     Bài test ĐẦU TIÊN cho lỗi này chỉ soi mã nguồn (`'TOI_THIEU_GIAY' in src`) nên VẪN
     XANH trong khi hàm ném IndexError ở mọi lượt build. Test soi chữ không chứng minh
-    được gì về hành vi — phải GỌI THẬT."""
+    được gì về hành vi — phải GỌI THẬT.
+
+    Sàn thời lượng (dam_bao_san_thoi_luong) chạy SAU split_cue, không còn trong nó —
+    xem test_san_thoi_luong_toan_cuc cho lý do."""
     import build_short_draft as bsd
 
     # trường hợp làm vỡ bản vá đầu: đúng 2 dòng, dòng cuối là chữ mồ côi
@@ -409,10 +412,10 @@ def test_caption_khong_co_dong_qua_ngan():
     for a, b, t in ra:
         assert b > a, f"dòng {t!r} có thời lượng âm hoặc bằng 0"
 
-    # cue dài: mọi dòng phải đọc kịp, và không dòng nào bị mất chữ
+    # cue dài: qua sàn thời lượng toàn cục thì mọi dòng phải đọc kịp, không mất chữ
     dai = ("Đầu tiên trong ít nhất hai tuần tới là phải hoàn thành hệ thống "
            "edit tự động để giảm tải khối lượng công việc rất là xa.")
-    ra = bsd.split_cue(0.0, 12.0, dai)
+    ra = bsd.dam_bao_san_thoi_luong(bsd.split_cue(0.0, 12.0, dai))
     ngan = [(b - a, t) for a, b, t in ra if b - a < 0.3]
     assert not ngan, f"còn dòng dưới 0,3 giây: {ngan[:3]}"
     assert " ".join(t for _, _, t in ra).split() == dai.split(), "ghép lại phải đủ chữ"
@@ -422,6 +425,54 @@ def test_caption_khong_co_dong_qua_ngan():
 
     # cue quá ngắn để chia: vẫn phải ra thứ dùng được, không được nổ
     assert bsd.split_cue(5.0, 5.2, "Ok.")
+
+
+def test_caption_khong_gan_nguyen_cau_cho_manh_bi_cat():
+    """GỐC THẬT của lỗi nhấp nháy 8 dòng liên tiếp 0,05-0,13s (28/07, kênh 'Cộng đồng
+    Học làm Sếp') — không phải do nói nhanh (nghi vấn ban đầu, SAI: đo lại thấy
+    segment gốc dài tự nhiên 3,4 giây, hoàn toàn bình thường). Nguyên nhân thật:
+    captions_for_cuts gán TRỌN VĂN BẢN segment cho mảnh thời gian còn SỐNG SÓT khi
+    segment bị CẮT NGANG bởi ranh giới cut (hook tách ra, hoặc tighten_cuts bỏ
+    khoảng lặng giữa câu). Câu 60 ký tự chỉ còn 0,4s sống sót (3s đầu nằm ngoài vùng
+    cut) nhưng vẫn hiện TRỌN CÂU — split_cue chia domino xuống 0,05-0,13s/dòng.
+    Tệ hơn cả nhấp nháy: có ca chữ hiện ra ứng với ÂM THANH ĐÃ BỊ CẮT KHỎI VIDEO,
+    tức phụ đề nói cái không ai nghe thấy.
+
+    Vá tại chính nguồn (captions_for_cuts + _chu_con_song_sot): dùng mốc TỪNG CHỮ để
+    chỉ lấy đúng phần chữ nằm trong khoảng sống sót, không phải nguyên câu."""
+    from render_short import captions_for_cuts
+
+    # Segment dài tự nhiên 3,4s (đúng số đo thật), có mốc từng chữ, nhưng cut chỉ giữ
+    # lại 0,4 giây CUỐI của nó — mô phỏng cut bắt đầu ở giữa câu.
+    seg = {
+        "start": 100.0, "end": 103.4,
+        "text": "Em cũng sẽ tự nhìn nhận lại mình trong suốt giai đoạn qua.",
+        "words": [
+            {"w": " Em", "start": 100.0, "end": 100.2}, {"w": " cũng", "start": 100.2, "end": 100.4},
+            {"w": " sẽ", "start": 100.4, "end": 100.6}, {"w": " tự", "start": 100.6, "end": 101.2},
+            {"w": " nhìn", "start": 101.2, "end": 101.4}, {"w": " nhận", "start": 101.4, "end": 101.6},
+            {"w": " lại", "start": 101.6, "end": 101.8}, {"w": " mình", "start": 101.8, "end": 102.0},
+            {"w": " trong", "start": 102.0, "end": 102.6}, {"w": " suốt", "start": 102.6, "end": 102.8},
+            {"w": " giai", "start": 102.8, "end": 103.0}, {"w": " đoạn", "start": 103.0, "end": 103.2},
+            {"w": " qua.", "start": 103.2, "end": 103.4},
+        ],
+    }
+    cues = captions_for_cuts([(103.0, 110.0)], [seg])   # chỉ 0,4s cuối segment nằm trong cut
+    assert len(cues) == 1
+    st, en, txt = cues[0]
+    assert en - st <= 0.5, "cue phải khớp đúng thời lượng SỐNG SÓT, không phải cả câu"
+    assert txt != seg["text"], "không được gán TRỌN CÂU cho mảnh thời gian bị cắt"
+    assert "qua" in txt, "phải giữ đúng phần chữ tương ứng với thời gian còn sống sót"
+    assert "Em" not in txt, "không được lẫn chữ thuộc phần ĐÃ BỊ CẮT KHỎI VIDEO"
+
+
+def test_caption_khong_bi_cat_van_giu_nguyen_van():
+    """Segment KHÔNG bị cắt ngang (nằm trọn trong một cut) thì đường đi cũ phải giữ
+    nguyên — bản vá chỉ can thiệp đúng trường hợp bị cắt, không ảnh hưởng ca bình thường."""
+    from render_short import captions_for_cuts
+    seg = {"start": 10.0, "end": 12.0, "text": "Câu bình thường không bị cắt.", "words": []}
+    assert captions_for_cuts([(5.0, 20.0)], [seg]) == \
+        [(5.0, 7.0, "Câu bình thường không bị cắt.")]
 
 
 def test_caption_khoa_theo_moc_thoi_gian_khong_theo_id():

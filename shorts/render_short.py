@@ -110,6 +110,34 @@ def khoa_cap(seg) -> str:
     return str(int(round(seg["start"] * 1000)))
 
 
+def _chu_con_song_sot(seg: dict, lo: float, hi: float) -> str | None:
+    """Segment bị CẮT NGANG bởi ranh giới cut: chỉ [lo,hi] của nó còn trong video,
+    phần còn lại đã bị bỏ (thuộc khoảng lặng vừa tighten_cuts, hoặc thuộc hook đã
+    tách ra chỗ khác). Trả về đúng CHỮ tương ứng với phần còn sống sót — không phải
+    nguyên câu.
+
+    LỖI ĐÃ TRẢ GIÁ 28/07: bản cũ luôn gán TRỌN VĂN BẢN segment cho mảnh thời gian
+    còn sót, bất kể mảnh đó dài bao nhiêu. Đo trên draft thật (kênh 'Cộng đồng Học
+    làm Sếp'): câu 60 ký tự, dài tự nhiên 3,4s, chỉ còn 0,4s sống sót (3s đầu nằm
+    ngoài vùng cut) — nhưng phụ đề vẫn hiện TRỌN CÂU trong 0,4s đó, rồi split_cue
+    chia thành nhiều dòng chỉ 0,05-0,13s mỗi dòng, không đọc nổi. Tệ hơn: có ca chữ
+    hiện ra ứng với phần ÂM THANH ĐÃ BỊ CẮT KHỎI VIDEO — phụ đề nói cái không ai
+    nghe thấy.
+
+    Dùng MỐC TỪNG CHỮ (words) khi có — đây chính là 1.812 mốc chữ trước đó bị vứt.
+    Không có mốc chữ thì chỉ dùng nguyên câu nếu phần sống sót ĐỦ NHIỀU (≥70% độ dài
+    gốc) — dưới mức đó, hiện thiếu (bỏ cue) còn an toàn hơn hiện sai."""
+    words = seg.get("words") or []
+    if words:
+        giu = [w for w in words
+               if min(w["end"], hi) - max(w["start"], lo) >= (w["end"] - w["start"]) * 0.5]
+        return "".join(w["w"] for w in giu).strip() or None
+    dai_goc = seg["end"] - seg["start"]
+    if dai_goc > 0 and (hi - lo) / dai_goc >= 0.7:
+        return seg["text"].strip()
+    return None
+
+
 def captions_for_cuts(cuts: list, segs: list, fixed: dict = None) -> list:
     """Trả về [(out_start, out_end, text)] theo timeline output; dùng caption đã sửa nếu có."""
     fixed = fixed or {}
@@ -118,12 +146,17 @@ def captions_for_cuts(cuts: list, segs: list, fixed: dict = None) -> list:
         for seg in segs:
             if seg["end"] <= c0 or seg["start"] >= c1:
                 continue
-            st = max(seg["start"], c0) - c0 + offset
-            en = min(seg["end"], c1) - c0 + offset
-            # Ưu tiên chữ ĐÃ SẠCH nằm ngay trong segment (lam_sach_toan_bo ghi thẳng
-            # vào `text`, giữ bản thô ở `text_goc`) — đó là nguồn không thể lệch.
-            txt = (seg["text"] if seg.get("text_goc") is not None
-                   else fixed.get(khoa_cap(seg), seg["text"])).strip()
+            lo, hi = max(seg["start"], c0), min(seg["end"], c1)
+            st = lo - c0 + offset
+            en = hi - c0 + offset
+            bi_cat = seg["start"] < c0 - 1e-6 or seg["end"] > c1 + 1e-6
+            if bi_cat:
+                txt = _chu_con_song_sot(seg, lo, hi)
+            else:
+                # Ưu tiên chữ ĐÃ SẠCH nằm ngay trong segment (lam_sach_toan_bo ghi
+                # thẳng vào `text`, giữ bản thô ở `text_goc`) — nguồn không thể lệch.
+                txt = (seg["text"] if seg.get("text_goc") is not None
+                       else fixed.get(khoa_cap(seg), seg["text"])).strip()
             if txt and en > st:
                 cues.append((st, en, txt))
         offset += (c1 - c0)
