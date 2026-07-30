@@ -369,6 +369,23 @@ def test_transcribe_survey_lui_cpu_khi_cuda_loi_giua_chung(monkeypatch, tmp_path
     assert data["n_segments"] == 3
 
 
+def test_toc_do_asr_tra_ve_device_that_su_da_chay(monkeypatch, tmp_path):
+    """UI cần gợi ý chọn model nhẹ hơn KHI BIẾT máy sẽ chạy CPU (người dùng thật đề
+    nghị, GTX 1650 thiếu DLL CUDA nên luôn lùi CPU) — dựa vào device THẬT của lần đo
+    gần nhất (transcribe.toc_do_asr() giờ trả 3 giá trị, không phải 2), không tự dò
+    CUDA thêm lúc tải trang (tốn thời gian, có thể treo trên máy driver hỏng)."""
+    import transcribe
+    monkeypatch.setattr(transcribe, "TOC_DO", tmp_path / "toc_do_asr.json")
+
+    rtf, da_do, device = transcribe.toc_do_asr()
+    assert da_do is False and device is None, "chưa đo lần nào thì không được bịa device"
+
+    transcribe.ghi_toc_do(4.2, "small", "cpu")
+    rtf, da_do, device = transcribe.toc_do_asr()
+    assert da_do is True and device == "cpu", \
+        "phải đọc lại đúng device THẬT của lần đo gần nhất, không phải device người dùng chọn"
+
+
 def test_work_dir_bat_duoc_record_khac_trung_ten(tmp_path, monkeypatch):
     """Bug đã gặp: slug() chỉ lấy TÊN file nên hai record khác nhau cùng tên
     'test.mp4' dùng chung thư mục làm việc; cache tái dùng lẫn nhau -> draft TRỘN

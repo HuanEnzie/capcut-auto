@@ -61,18 +61,24 @@ def ghi_toc_do(rtf: float, model_name: str, device: str) -> None:
 
 
 def toc_do_asr() -> tuple:
-    """(hệ số realtime, có phải số đo thật của máy này không).
+    """(hệ số realtime, có phải số đo thật của máy này không, device lần đo gần nhất).
 
     Chưa chạy lần nào thì đoán DÈ DẶT. Thà báo lâu hơn thực tế còn hơn hứa 2 phút rồi
     bắt người ta ngồi 4 phút — con số cũ (30x) là đo trên GPU máy dev, máy chạy CPU
-    thấp hơn nhiều lần."""
+    thấp hơn nhiều lần.
+
+    `device` trả về là device THẬT SỰ đã chạy (sau mọi lần lùi CPU nếu CUDA lỗi giữa
+    chừng — xem transcribe()/transcribe_survey()), không phải device người dùng CHỌN.
+    Máy có card nhưng thiếu DLL CUDA (vd cublas64_12.dll) sẽ luôn lộ ra device="cpu"
+    ở đây dù ô chọn trên UI vẫn để mặc định cuda — dùng để gợi ý người dùng chọn model
+    nhẹ hơn TRƯỚC khi họ bấm Phân tích, thay vì để họ tự đoán."""
     try:
         d = json.loads(TOC_DO.read_text(encoding="utf-8"))
         if d.get("realtime_factor", 0) > 0:
-            return float(d["realtime_factor"]), True
+            return float(d["realtime_factor"]), True, d.get("device")
     except (OSError, ValueError):
         pass
-    return 10.0, False
+    return 10.0, False, None
 
 
 class NguonKhongKhop(RuntimeError):

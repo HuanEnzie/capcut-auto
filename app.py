@@ -537,6 +537,13 @@ def api_app_project_mot(pid: int):
         except (OSError, ValueError, KeyError):
             pass
     p["da_phan_tich"] = bool(tj and tj.exists())
+    # Device THẬT SỰ của lần bóc lời gần nhất trên MÁY NÀY (không phải máy này chọn
+    # gì) — cho UI gợi ý chọn model nhẹ hơn TRƯỚC khi bấm Phân tích, thay vì để job
+    # chạy hàng chục phút trên CPU rồi người dùng mới ngờ ngợ máy không dùng GPU.
+    # Đo được 1 lần là đủ tin — GPU không tự "hết hỏng" giữa hai lần chạy gần nhau.
+    import transcribe as tr_mod
+    _, _, thiet_bi_gan_nhat = tr_mod.toc_do_asr()
+    p["asr_cpu_gan_nhat"] = (thiet_bi_gan_nhat == "cpu")
     return p
 
 
@@ -605,7 +612,7 @@ def api_browse(dir: str = "", de_quy: bool = True):
                 # 30 — hệ số đo trên GPU máy dev — nên máy chạy CPU hứa "2 phút" rồi
                 # bắt ngồi 4 phút. Chưa đo lần nào thì đoán dè dặt (10x).
                 import transcribe as tr_mod
-                rtf, da_do = tr_mod.toc_do_asr()
+                rtf, da_do, _ = tr_mod.toc_do_asr()
                 try:
                     tuong_doi = str(p.relative_to(d)).replace("\\", "/")
                 except ValueError:

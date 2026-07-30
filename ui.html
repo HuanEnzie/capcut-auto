@@ -1329,6 +1329,10 @@ async function loadWork(){
         ${p.work_dir && !p.da_phan_tich ? `<p class="muted small" style="margin:0 0 10px">
           <b>Bước tiếp theo:</b> chọn độ chính xác rồi bấm <b>Phân tích</b> — bóc lời và tìm chủ đề
           tự động, chạy nền vài phút, theo dõi ở mục Tiến trình bên dưới.</p>` : ''}
+        ${p.asr_cpu_gan_nhat ? `<p class="muted small" style="margin:0 0 10px">
+          <b>Máy này lần trước chạy CPU</b> (không dùng được GPU — thường do thiếu thư viện
+          CUDA), chậm hơn GPU nhiều lần. Record dài chọn <b>tiny</b> hoặc <b>base</b> để đỡ chờ lâu,
+          đổi lấy chữ sai nhiều hơn.</p>` : ''}
         <div class="row">
           <label class="fld"><span>Độ chính xác bóc lời</span>
             <select id="asrSel">
