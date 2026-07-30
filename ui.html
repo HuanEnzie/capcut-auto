@@ -1653,8 +1653,12 @@ async function ingest(btn){
       /* Truyền work_dir của DỰ ÁN: hai dự án dùng chung một record vẫn phải phân tích
          riêng, suy từ tên file là ghi đè lên nhau. */
       const w = (PROJ && PROJ.work_dir) ? `&work=${encodeURIComponent(PROJ.work_dir)}` : '';
-      await api(`/api/ingest?path=${encodeURIComponent(path)}&asr=${$('#asrSel').value}${w}`,{method:'POST'});
-      toast('Đã khởi động phân tích'); askNotify(); startPolling();
+      const r = await api(`/api/ingest?path=${encodeURIComponent(path)}&asr=${$('#asrSel').value}${w}`,{method:'POST'});
+      askNotify();
+      // Bóc lời record dài có thể chạy tới hàng chục phút — mở NGAY màn tiến trình
+      // giữa trang thay vì chỉ toast rồi im, để người dùng thấy máy đang làm việc
+      // thật, không tưởng app không phản hồi (đúng lỗi người dùng thật báo).
+      moTienTrinhModal(r.job, `Đang phân tích · ${label}`);
     }catch(e){ toast(String(e), true); }
   });
 }
@@ -1731,12 +1735,57 @@ function notifyDone(j){
   document.title = (j.state==='error'?'⚠ ':'✅ ') + 'CapCut Auto Editor';
   setTimeout(()=>document.title='CapCut Auto Editor', 8000);
 }
+/* ---------- Màn tiến trình nổi bật giữa trang ----------
+   Trước đây job chỉ hiện trong một khối nhỏ cuối trang (dễ lọt khỏi màn hình) cộng
+   chấm tròn góc trên — với việc chạy tới hàng chục phút (bóc lời record dài), người
+   dùng không thấy gì NGAY GIỮA MÀN HÌNH nên tưởng app không phản hồi. Mở modal này
+   ngay lúc bấm Phân tích/Tạo draft; bấm "Chạy nền" đóng lại bất cứ lúc nào — job vẫn
+   chạy tiếp, không phải màn hình khoá luồng. */
+let PM_JOB = null;   // id job modal đang theo dõi — null nghĩa là modal này đang đóng
+function moTienTrinhModal(jobId, tieuDe){
+  PM_JOB = jobId;
+  $('#mdTitle').textContent = tieuDe;
+  $('#mdBody').innerHTML = '<div id="pmBody" style="text-align:left"><p class="muted small">Đang khởi động…</p></div>';
+  const chayNen = document.createElement('button');
+  chayNen.className = 'btn ghost'; chayNen.textContent = 'Chạy nền';
+  chayNen.title = 'Đóng màn này — job vẫn chạy tiếp, xem lại ở mục Tiến trình';
+  chayNen.onclick = () => { PM_JOB = null; MODAL_CLOSE = null; closeModal(); };
+  $('#mdActs').innerHTML = ''; $('#mdActs').appendChild(chayNen);
+  MODAL_CLOSE = () => { PM_JOB = null; };
+  openVeil();
+  document.querySelector('#veil .modal').classList.add('wide');
+  startPolling();       // vẽ ngay lần đầu qua tick poll tới, không đợi 1.5s trống trơn
+}
+function veTienTrinhModal(j){
+  const body = $('#pmBody'); if(!body) return;
+  if(!j){ body.innerHTML = '<p class="muted small">Đang khởi động…</p>'; return; }
+  const p = jobProgress(j);
+  const log = j.log || [];
+  body.innerHTML = `
+    <div class="prog${j.state==='running'?'':(j.state==='error'?' err':' idle')}" style="height:14px">
+      <i style="width:${p.pct}%"></i></div>
+    <p style="margin:10px 0 4px"><b>${esc(p.label)}</b>${esc(j.state==='running'?etaTxt(p.eta):'')}</p>
+    ${log.length?`<pre style="max-height:280px;overflow:auto">${log.slice(-14).map(esc).join('\n')}</pre>`:''}`;
+  if(j.state !== 'running'){
+    // Job xong/lỗi trong lúc modal đang mở — đổi nút "Chạy nền" thành nút đóng bình
+    // thường, đừng tự đóng modal đột ngột (người dùng có thể đang đọc log lỗi).
+    const acts = $('#mdActs');
+    if(acts && acts.children.length === 1 && acts.firstElementChild.textContent === 'Chạy nền'){
+      acts.innerHTML = '';
+      const dong = document.createElement('button');
+      dong.className = 'btn'; dong.textContent = j.state==='error' ? 'Đã hiểu' : 'Xong, đóng lại';
+      dong.onclick = () => { PM_JOB = null; MODAL_CLOSE = null; closeModal(); };
+      acts.appendChild(dong);
+    }
+  }
+}
 const SEEN_DONE = new Set();
 const JOB_DONE_CB = {};      // việc nào cần làm tiếp khi job XONG THẬT (thay vì đoán bằng setTimeout)
-let JOBS_HTML = '';
 async function pollJobs(){
   const d = await api('/api/jobs').catch(()=>({jobs:[]}));
   const running = d.jobs.filter(j=>j.state==='running');
+
+  if(PM_JOB) veTienTrinhModal(d.jobs.find(x => x.id === PM_JOB));
 
   /* badge toàn cục — thấy được ở MỌI tab, kể cả chế độ Agent */
   const bg = $('#jobBadge');
@@ -1796,9 +1845,17 @@ async function pollJobs(){
       <div class="muted small">${esc(p.label)}${esc(j.state==='running'?etaTxt(p.eta):'')}</div>
       ${log.length?`<pre>${log.slice(-3).map(esc).join('\n')}</pre>`:''}</div>`;
   }).join('');
-  /* chỉ vẽ lại khi ĐỔI: vẽ lại mỗi 1.5s làm mất vệt bôi đen khi người dùng đang
-     copy dòng log lỗi ra để hỏi. */
-  if(html !== JOBS_HTML){ JOBS_HTML = html; hop.forEach(b => b.innerHTML = html); }
+  /* Chỉ vẽ lại khi ĐỔI: vẽ lại mỗi 1.5s làm mất vệt bôi đen khi người dùng đang
+     copy dòng log lỗi ra để hỏi. NHƯNG so với MỘT biến cache DÙNG CHUNG cho mọi
+     trang là sai — chuyển tab thì loadHome()/loadWork() dựng lại <div
+     class="jobsBox"></div> RỖNG TINH; nếu đúng lúc đó tiến trình job CHƯA đổi so
+     với lần poll trước (html === JOBS_HTML cũ), nhánh này bị bỏ qua và ô rỗng vừa
+     dựng không bao giờ được lấp — đứng im/trống trơn cho tới khi tiến trình job
+     đổi thật. Đúng lỗi người dùng báo: "không cập nhật, phải thoát ra vào lại,
+     đôi khi còn bị ẩn đi". Vá: so sánh theo ĐÚNG TỪNG PHẦN TỬ đang có gì, không
+     theo một cache chung — ô nào đã đúng nội dung thì bỏ qua (giữ vệt bôi đen),
+     ô nào vừa bị dựng rỗng thì luôn được lấp ngay, không đợi tiến trình đổi. */
+  hop.forEach(b => { if(b.innerHTML !== html) b.innerHTML = html; });
 }
 ACTIONS.log  = d => fullLog(d.id);
 ACTIONS.open = async (d, el) => busy(el, 'Đang mở…', async () => {
