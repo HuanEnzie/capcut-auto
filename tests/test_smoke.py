@@ -217,6 +217,37 @@ def test_mo_thu_muc_chan_di_ra_ngoai():
         app.api_draft_open("khong-ton-tai-dau")
 
 
+def test_pick_khong_goi_python_dash_c(monkeypatch):
+    """Bắt lại lỗi 30/07: /api/pick gọi `sys.executable -c <code>` để mở tkinter.
+
+    Ở bản .exe đóng gói, sys.executable CHÍNH LÀ CapCutAuto.exe — nó không hiểu cờ
+    `-c`, nên lệnh đó vô tình mở thêm một bản app thứ hai (tranh cổng 8765 với bản
+    gốc, chết ngay, và dòng chào "App: ..." của nó bị nhặt nhầm làm đường dẫn vừa
+    chọn). Phải gọi qua cờ `--pick` để tiến trình con chạy đúng nhánh tkinter."""
+    import app
+    goi = {}
+
+    def gia_run(lenh, **kw):
+        goi["lenh"] = lenh
+        class R: stdout = "C:/gia/duong/dan\n"; stderr = ""
+        return R()
+
+    monkeypatch.setattr(app.subprocess, "run", gia_run)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    app.api_pick(kieu="thu_muc")
+    assert goi["lenh"] == [sys.executable, "--pick", "thu_muc"], \
+        "đóng gói: gọi lại CHÍNH .exe kèm --pick, không phải -c"
+
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    app.api_pick(kieu="file")
+    assert goi["lenh"] == [sys.executable, app.__file__, "--pick", "file"], \
+        "chạy nguồn: phải kèm đường dẫn app.py thì python.exe mới biết chạy gì"
+
+    for lenh in (goi["lenh"],):
+        assert "-c" not in lenh, "lỡ quay lại cách gọi -c là tái phát đúng lỗi 30/07"
+
+
 def test_giao_dien_khong_dung_hop_thoai_trinh_duyet():
     """docs/UI.md mục 5: alert/confirm/prompt bị cấm."""
     t = (ROOT / "ui.html").read_text(encoding="utf-8")

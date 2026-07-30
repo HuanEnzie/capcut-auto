@@ -1299,13 +1299,15 @@ async function loadWork(){
           <label class="fld" style="flex:1;min-width:220px"><span>Thư mục</span>
             <input id="dirIn" value="${esc(PREF.get('dir',''))}" placeholder="đang lấy mặc định…"></label>
           <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickDir" title="Mở hộp thoại chọn thư mục của Windows">Chọn thư mục…</button></label>
-          <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse">Quét lại</button></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnBrowse"
+            title="Quét lại thư mục — dùng khi vừa chép thêm record mới vào">Quét lại</button></label>
         </div>
         <div class="row">
           <label class="fld" style="flex:1;min-width:260px"><span>File record <span class="muted small">(quét cả thư mục con)</span></span>
             <select id="fileSel"><option>— đang quét —</option></select></label>
           <label class="fld"><span>&nbsp;</span><button class="btn ghost" id="btnPickFile" title="Chọn thẳng một file bất kỳ trên máy">Chọn file…</button></label>
-          <label class="fld"><span>&nbsp;</span><button class="btn" id="btnGanRecord">Dùng file này</button></label>
+          <label class="fld"><span>&nbsp;</span><button class="btn" id="btnGanRecord"
+            title="Gắn file này vào dự án — bước đầu tiên, xong mới bấm Phân tích được">Dùng file này</button></label>
         </div>
         <p class="muted small" id="scanNote"></p>`}
 
@@ -1319,10 +1321,14 @@ async function loadWork(){
         </div>
         <div class="row" style="margin-top:12px">
           <button class="btn ghost sm" data-act="chon-sfx">Chọn SFX cụ thể${chon.sfx.length?` (${chon.sfx.length})`:''}</button>
-          <button class="btn sm" id="btnLuuCauHinh">Lưu cấu hình</button>
+          <button class="btn ghost sm" id="btnLuuCauHinh"
+            title="Lưu lựa chọn lớp tài nguyên cho draft — không bắt buộc trước khi Phân tích, đổi lại được bất cứ lúc nào">Lưu cấu hình</button>
         </div>
 
         <h3 class="sub">Bóc lời &amp; trích chủ đề</h3>
+        ${p.work_dir && !p.da_phan_tich ? `<p class="muted small" style="margin:0 0 10px">
+          <b>Bước tiếp theo:</b> chọn độ chính xác rồi bấm <b>Phân tích</b> — bóc lời và tìm chủ đề
+          tự động, chạy nền vài phút, theo dõi ở mục Tiến trình bên dưới.</p>` : ''}
         <div class="row">
           <label class="fld"><span>Độ chính xác bóc lời</span>
             <select id="asrSel">
@@ -1333,7 +1339,8 @@ async function loadWork(){
             </select></label>
           <label class="fld"><span>&nbsp;</span><button class="btn" id="btnIngest"
             ${!p.work_dir ? 'disabled title="Chọn file record trước"'
-              : (!ed.keys.gemini ? 'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"' : '')}
+              : (!ed.keys.gemini ? 'disabled title="Cần GEMINI_API_KEY — bước trích chủ đề dùng Gemini"'
+                : 'title="Bóc lời rồi Gemini trích chủ đề — chạy nền, theo dõi ở mục Tiến trình"')}
             >${p.da_phan_tich?'Phân tích lại':'Phân tích'}</button></label>
         </div>
         ${p.da_phan_tich?'<p class="muted small">Phân tích lại có thể ra danh sách chủ đề KHÁC — draft đã dựng vẫn giữ nguyên.</p>':''}

@@ -626,6 +626,24 @@ def api_browse(dir: str = "", de_quy: bool = True):
             "de_quy": de_quy, "cat_bot": cat_bot, "max_file": MAX_FILE}
 
 
+def _chon_bang_tkinter(kieu: str) -> str:
+    """Mở hộp thoại thật của Windows, in đường dẫn ra stdout rồi thoát ngay.
+
+    Gọi từ `_run_pick_con()` trong tiến trình con — KHÔNG gọi trực tiếp từ route:
+    tkinter phải ở luồng chính, mà route chạy trong luồng của web server đa luồng."""
+    import tkinter as tk
+    from tkinter import filedialog
+    r = tk.Tk(); r.withdraw(); r.attributes("-topmost", True)
+    if kieu == "thu_muc":
+        p = filedialog.askdirectory(title="Chọn thư mục chứa record")
+    else:
+        p = filedialog.askopenfilename(
+            title="Chọn file record",
+            filetypes=[("Video/Audio", "*.mp4 *.mov *.mkv *.avi *.m4v *.webm *.mp3 *.wav *.m4a"),
+                       ("Tất cả", "*.*")])
+    print(p or "")
+
+
 @app.post("/api/pick")
 def api_pick(kieu: str = "thu_muc"):
     """Mở hộp thoại chọn file/thư mục CỦA WINDOWS.
@@ -635,24 +653,16 @@ def api_pick(kieu: str = "thu_muc"):
     App chạy local nên mở được hộp thoại thật; dùng tkinter có sẵn trong Python,
     không thêm phụ thuộc.
 
-    Chạy trong TIẾN TRÌNH RIÊNG: tkinter phải ở luồng chính, mà đây là web server
-    đa luồng — gọi thẳng là treo cả app."""
+    Chạy trong TIẾN TRÌNH RIÊNG qua cờ `--pick` (xem __main__), KHÔNG qua `python -c
+    <code>`: bản .exe đóng gói thì sys.executable CHÍNH LÀ CapCutAuto.exe, không hiểu
+    cờ `-c` — gọi kiểu đó vô tình mở thêm một bản app thứ hai, bản đó in dòng chào
+    "App: http://127.0.0.1:8765" rồi chết vì cổng 8765 đã bị chiếm, và dòng đó bị
+    nhặt nhầm làm đường dẫn vừa chọn. Bắt bởi người dùng thật, không phải đoán."""
     if kieu not in ("thu_muc", "file"):
         raise HTTPException(400, "kieu phải là 'thu_muc' hoặc 'file'")
-    ma = (
-        "import tkinter as tk\n"
-        "from tkinter import filedialog\n"
-        "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True)\n"
-        + ("p = filedialog.askdirectory(title='Chọn thư mục chứa record')\n"
-           if kieu == "thu_muc" else
-           "p = filedialog.askopenfilename(title='Chọn file record',"
-           " filetypes=[('Video/Audio','*.mp4 *.mov *.mkv *.avi *.m4v *.webm *.mp3 *.wav *.m4a'),"
-           " ('Tất cả','*.*')])\n")
-        + "print(p or '')\n"
-    )
+    lenh = [sys.executable] + ([] if getattr(sys, "frozen", False) else [__file__]) + ["--pick", kieu]
     try:
-        r = subprocess.run([sys.executable, "-c", ma], capture_output=True,
-                           text=True, timeout=300)
+        r = subprocess.run(lenh, capture_output=True, text=True, timeout=300)
     except subprocess.SubprocessError as e:
         raise HTTPException(500, f"Không mở được hộp thoại: {e}")
     duong = (r.stdout or "").strip().splitlines()
@@ -1064,6 +1074,12 @@ def index():
 
 
 if __name__ == "__main__":
+    # Tiến trình con của /api/pick gọi lại chính file/exe này kèm --pick — phải chặn
+    # NGAY ĐẦU, trước dòng in "App: ..." và trước uvicorn.run(), nếu không tiến trình
+    # con lại thành một bản app thứ hai tranh cổng 8765 với bản gốc.
+    if len(sys.argv) > 1 and sys.argv[1] == "--pick":
+        _chon_bang_tkinter(sys.argv[2] if len(sys.argv) > 2 else "thu_muc")
+        sys.exit(0)
     print("  App: http://127.0.0.1:8765")
     # Bản .exe đóng gói chạy bằng double-click, không còn chay.bat bao quanh để tự mở
     # trình duyệt (chay.bat gọi `start "" http://...` TRƯỚC khi chạy python). Tự mở ở
