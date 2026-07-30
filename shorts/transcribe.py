@@ -222,35 +222,43 @@ def transcribe(source: str, model_name: str = "small", device: str = "cuda",
 
     wav = extract_audio(source, wd / "audio.wav")
     dur = probe_duration(source)
-
-    if device == "cuda":
-        enable_cuda()
     from faster_whisper import WhisperModel
 
-    print(f"  [asr] nạp model '{model_name}' trên {device}...")
-    ct = "int8_float16" if device == "cuda" else "int8"
+    def _chay(dev):
+        if dev == "cuda":
+            enable_cuda()
+        ct = "int8_float16" if dev == "cuda" else "int8"
+        print(f"  [asr] nạp model '{model_name}' trên {dev}...")
+        model = WhisperModel(model_name, device=dev, compute_type=ct, cpu_threads=_luong_cpu())
+        print(f"  [asr] transcribe {fmt_ts(dur)} (word-timestamps, VAD)...")
+        t0 = time.time()
+        segments, info = model.transcribe(
+            str(wav), language="vi", word_timestamps=True, vad_filter=True)
+        seg_list = []
+        for seg in segments:
+            words = [{"w": w.word, "start": round(w.start, 3), "end": round(w.end, 3)}
+                     for w in (seg.words or [])]
+            seg_list.append({"id": len(seg_list), "start": round(seg.start, 3),
+                             "end": round(seg.end, 3), "text": seg.text.strip(), "words": words})
+            if len(seg_list) % 50 == 0:
+                print(f"      {len(seg_list)} segment... ({fmt_ts(seg.end)}/{fmt_ts(dur)})")
+        return t0, seg_list, info
+
     try:
-        model = WhisperModel(model_name, device=device, compute_type=ct,
-                             cpu_threads=_luong_cpu())
+        t0, seg_list, info = _chay(device)
     except Exception as e:
-        print(f"  [asr] {device} lỗi ({e}); chuyển sang CPU")
-        device, ct = "cpu", "int8"
-        model = WhisperModel(model_name, device=device, compute_type=ct,
-                             cpu_threads=_luong_cpu())
-
-    print(f"  [asr] transcribe {fmt_ts(dur)} (word-timestamps, VAD)...")
-    t0 = time.time()
-    segments, info = model.transcribe(
-        str(wav), language="vi", word_timestamps=True, vad_filter=True)
-
-    seg_list = []
-    for seg in segments:
-        words = [{"w": w.word, "start": round(w.start, 3), "end": round(w.end, 3)}
-                 for w in (seg.words or [])]
-        seg_list.append({"id": len(seg_list), "start": round(seg.start, 3),
-                         "end": round(seg.end, 3), "text": seg.text.strip(), "words": words})
-        if len(seg_list) % 50 == 0:
-            print(f"      {len(seg_list)} segment... ({fmt_ts(seg.end)}/{fmt_ts(dur)})")
+        if device != "cuda":
+            raise
+        # cublas64_12.dll (và các DLL CUDA khác) chỉ nạp LƯỜI lúc TÍNH TOÁN thật, không
+        # phải lúc gọi WhisperModel() — nên bọc try/except CHỈ quanh chỗ khởi tạo (bản
+        # cũ) là không đủ, lỗi thiếu DLL nổ ra GIỮA CHỪNG lúc model.transcribe() đang
+        # chạy thật, ngoài vùng bắt lỗi. Bọc cả khối (khởi tạo + transcribe + tiêu thụ
+        # segment) mới bắt được. Bắt bởi người dùng thật — máy có driver CUDA nhưng
+        # thiếu cublas64_12.dll (thường do cài CUDA Toolkit không đủ, hoặc driver mới
+        # nhưng thư viện cũ).
+        print(f"  [asr] cuda lỗi giữa chừng ({e}); thử lại toàn bộ trên CPU")
+        device = "cpu"
+        t0, seg_list, info = _chay(device)
 
     dt = time.time() - t0
     data = {
@@ -296,32 +304,39 @@ def transcribe_survey(source: str, model_name: str = "small", device: str = "cud
 
     wav = extract_audio(source, wd / "audio.wav")
     dur = probe_duration(source)
-    if device == "cuda":
-        enable_cuda()
     from faster_whisper import WhisperModel, BatchedInferencePipeline
 
-    ct = "int8_float16" if device == "cuda" else "int8"
+    def _chay(dev):
+        if dev == "cuda":
+            enable_cuda()
+        ct = "int8_float16" if dev == "cuda" else "int8"
+        base = WhisperModel(model_name, device=dev, compute_type=ct, cpu_threads=_luong_cpu())
+        model = BatchedInferencePipeline(model=base)
+        print(f"  [asr-survey] khảo sát {fmt_ts(dur)} — batched, greedy, không mốc từ...")
+        t0 = time.time()
+        segments, info = model.transcribe(
+            str(wav), language="vi", batch_size=16, beam_size=1,
+            condition_on_previous_text=False, temperature=0.0,
+            word_timestamps=False, vad_filter=True)
+        seg_list = []
+        for seg in segments:
+            seg_list.append({"id": len(seg_list), "start": round(seg.start, 3),
+                             "end": round(seg.end, 3), "text": seg.text.strip(), "words": []})
+            if len(seg_list) % 100 == 0:
+                print(f"      {len(seg_list)} segment... ({fmt_ts(seg.end)}/{fmt_ts(dur)})")
+        return t0, seg_list, info
+
     try:
-        base = WhisperModel(model_name, device=device, compute_type=ct, cpu_threads=_luong_cpu())
+        t0, seg_list, info = _chay(device)
     except Exception as e:
-        print(f"  [asr-survey] {device} lỗi ({e}); chuyển CPU")
-        device, ct = "cpu", "int8"
-        base = WhisperModel(model_name, device=device, compute_type=ct, cpu_threads=_luong_cpu())
-    model = BatchedInferencePipeline(model=base)
-
-    print(f"  [asr-survey] khảo sát {fmt_ts(dur)} — batched, greedy, không mốc từ...")
-    t0 = time.time()
-    segments, info = model.transcribe(
-        str(wav), language="vi", batch_size=16, beam_size=1,
-        condition_on_previous_text=False, temperature=0.0,
-        word_timestamps=False, vad_filter=True)
-
-    seg_list = []
-    for seg in segments:
-        seg_list.append({"id": len(seg_list), "start": round(seg.start, 3),
-                         "end": round(seg.end, 3), "text": seg.text.strip(), "words": []})
-        if len(seg_list) % 100 == 0:
-            print(f"      {len(seg_list)} segment... ({fmt_ts(seg.end)}/{fmt_ts(dur)})")
+        if device != "cuda":
+            raise
+        # Xem giải thích chi tiết trong transcribe(): cublas64_12.dll nạp LƯỜI lúc tính
+        # toán thật, lỗi có thể nổ giữa chừng batch — phải bọc cả khối, không chỉ lúc
+        # khởi tạo WhisperModel().
+        print(f"  [asr-survey] cuda lỗi giữa chừng ({e}); thử lại toàn bộ trên CPU")
+        device = "cpu"
+        t0, seg_list, info = _chay(device)
 
     dt = time.time() - t0
     data = {"source": str(source), "duration_sec": round(dur, 1), "language": info.language,
@@ -352,30 +367,37 @@ def refine_range(source: str, t0: float, t1: float, model_name: str = "medium",
 
     survey = transcribe_survey(source, "small", device)
     wav = extract_audio(source, wd / "audio.wav")
-    if device == "cuda":
-        enable_cuda()
     from faster_whisper import WhisperModel
 
-    ct = "int8_float16" if device == "cuda" else "int8"
-    try:
-        m = WhisperModel(model_name, device=device, compute_type=ct)
-    except Exception as e:
-        print(f"  [asr-fine] {model_name}/{device} lỗi ({e}); lùi về small/cpu")
-        model_name, device, ct = "small", "cpu", "int8"
-        m = WhisperModel(model_name, device=device, compute_type=ct)
+    def _chay(dev, mdl):
+        if dev == "cuda":
+            enable_cuda()
+        ct = "int8_float16" if dev == "cuda" else "int8"
+        m = WhisperModel(mdl, device=dev, compute_type=ct)
+        print(f"  [asr-fine] bóc kỹ {fmt_ts(a)}-{fmt_ts(b)} bằng '{mdl}' (có mốc từ)...")
+        ts = time.time()
+        segments, _ = m.transcribe(str(wav), language="vi", word_timestamps=True,
+                                   vad_filter=True, beam_size=5,
+                                   clip_timestamps=[a, b])
+        fine_segs = []
+        for seg in segments:
+            words = [{"w": w.word, "start": round(w.start, 3), "end": round(w.end, 3)}
+                     for w in (seg.words or [])]
+            fine_segs.append({"start": round(seg.start, 3), "end": round(seg.end, 3),
+                              "text": seg.text.strip(), "words": words})
+        print(f"  [asr-fine] {len(fine_segs)} segment trong {time.time() - ts:.0f}s")
+        return fine_segs
 
-    print(f"  [asr-fine] bóc kỹ {fmt_ts(a)}-{fmt_ts(b)} bằng '{model_name}' (có mốc từ)...")
-    ts = time.time()
-    segments, _ = m.transcribe(str(wav), language="vi", word_timestamps=True,
-                               vad_filter=True, beam_size=5,
-                               clip_timestamps=[a, b])
-    fine_segs = []
-    for seg in segments:
-        words = [{"w": w.word, "start": round(w.start, 3), "end": round(w.end, 3)}
-                 for w in (seg.words or [])]
-        fine_segs.append({"start": round(seg.start, 3), "end": round(seg.end, 3),
-                          "text": seg.text.strip(), "words": words})
-    print(f"  [asr-fine] {len(fine_segs)} segment trong {time.time() - ts:.0f}s")
+    try:
+        fine_segs = _chay(device, model_name)
+    except Exception as e:
+        if device != "cuda":
+            raise
+        # Xem giải thích chi tiết trong transcribe(): DLL CUDA nạp lười, lỗi có thể nổ
+        # giữa chừng transcribe() chứ không chỉ lúc khởi tạo WhisperModel().
+        print(f"  [asr-fine] {model_name}/cuda lỗi giữa chừng ({e}); lùi về small/cpu")
+        model_name, device = "small", "cpu"
+        fine_segs = _chay(device, model_name)
 
     # trộn: giữ segment khảo sát NGOÀI khoảng, thay bằng bản kỹ TRONG khoảng
     base_segs = (fine or survey)["segments"]

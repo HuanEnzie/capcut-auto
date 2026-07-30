@@ -1152,6 +1152,23 @@ def _mo_cua_so_app(giu_song):
 
 
 if __name__ == "__main__":
+    if getattr(sys, "frozen", False):
+        # Ẩn cửa sổ console NGAY LẬP TỨC. Dùng --console (không --windowed) lúc build
+        # để print() an toàn — --windowed thì sys.stdout thành None, mọi print() rải
+        # rác khắp pipeline (transcribe.py, build_short_draft.py...) ném AttributeError
+        # ngay dòng đầu. Nhưng bản thân CỬA SỔ console đó không cần NHÌN THẤY: tiến
+        # trình chạy nền đã có log riêng trong UI (LogWriter/contextlib.redirect_stdout
+        # bọc quanh mỗi job), console giờ chỉ còn ích cho debug thủ công — ẩn cửa sổ đi,
+        # print() vẫn ghi bình thường vào đúng chỗ, chỉ là không HIỆN ra màn hình. Người
+        # dùng thử app chê thẳng: "vẫn còn cmd mở kèm app còn thiếu chuyên nghiệp hơn".
+        try:
+            import ctypes
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 0)   # SW_HIDE
+        except Exception:
+            pass          # ẩn console chỉ để đẹp -- lỗi ở đây không được chặn app chạy
+
     # Tiến trình con của /api/pick gọi lại chính file/exe này kèm --pick — phải chặn
     # NGAY ĐẦU, trước dòng in "App: ..." và trước server, nếu không tiến trình con
     # lại thành một bản app thứ hai tranh cổng 8765 với bản gốc.

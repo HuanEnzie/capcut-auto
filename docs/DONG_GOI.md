@@ -102,6 +102,26 @@ lần trước khi phát rộng.
   đúng cửa sổ tiêu đề "CapCut Auto Editor" của tiến trình `.exe` vừa cài, có 4-5 kết nối
   TCP thật tới cổng 8765 (đang tải nội dung app, không phải màn trắng).
 
+## Lỗi đã bắt được và vá — vòng 2 (30/07/2026, do người dùng thật báo)
+
+- **`RuntimeError: Library cublas64_12.dll is not found or cannot be loaded` làm job
+  Phân tích chết cứng**, dù pipeline đã có cơ chế lùi CPU. Gốc: cả 3 hàm ASR
+  (`transcribe`, `transcribe_survey`, `refine_range` trong `shorts/transcribe.py`) chỉ
+  bọc `try/except` quanh việc **khởi tạo** `WhisperModel(...)` — nhưng các DLL CUDA
+  (cuBLAS...) nạp **LƯỜI** lúc tính toán thật, không phải lúc khởi tạo. Lỗi nổ ra GIỮA
+  CHỪNG `model.transcribe()`/vòng lặp tiêu thụ segment, NGOÀI vùng bắt lỗi. Vá: bọc cả
+  khối (khởi tạo + transcribe + tiêu thụ segment) trong một hàm `_chay(device)`, lỗi ở
+  bất kỳ đâu trong đó đều kích hoạt thử lại TOÀN BỘ trên CPU. Test khoá lại:
+  `test_transcribe_survey_lui_cpu_khi_cuda_loi_giua_chung` — verify bằng cách chạy lại
+  trên code CŨ trước khi vá, xác nhận test FAIL đúng traceback thật của người dùng.
+- **"Vẫn còn cmd mở kèm app còn thiếu chuyên nghiệp hơn."** Giữ `--console` lúc build
+  (không đổi `--windowed`, tránh rủi ro `sys.stdout=None` làm vỡ `print()` rải rác khắp
+  pipeline), nhưng ẨN cửa sổ console ngay khi khởi động bằng
+  `ctypes.windll.user32.ShowWindow(hwnd, SW_HIDE)` — `print()` vẫn ghi bình thường (job
+  log trong UI không phụ thuộc console, đọc qua `LogWriter`/`contextlib.redirect_stdout`),
+  chỉ là cửa sổ không HIỆN ra. Kiểm bằng `EnumWindows`: trước khi vá thấy 2 cửa sổ (console
+  + "CapCut Auto Editor"), sau khi vá chỉ còn đúng 1.
+
 ## Giới hạn đã biết (chưa/không giải quyết ở bản này)
 
 - **Không ký số (unsigned).** Windows SmartScreen nhiều khả năng cảnh báo "Windows protected

@@ -315,6 +315,60 @@ def test_luong_cpu_khong_vuot_tran(monkeypatch):
             f"cpu_count={so_luong} -> {v} luồng, vượt trần {transcribe.TRAN_LUONG} là sập cứng"
 
 
+def test_transcribe_survey_lui_cpu_khi_cuda_loi_giua_chung(monkeypatch, tmp_path):
+    """Bắt lại lỗi 30/07 do người dùng thật báo (RuntimeError: Library cublas64_12.dll
+    is not found or cannot be loaded, nổ ra SAU dòng '[asr-survey] khảo sát...', tức
+    GIỮA CHỪNG lúc transcribe() đang chạy, không phải lúc WhisperModel() khởi tạo).
+
+    Bản cũ chỉ bọc try/except quanh WhisperModel(...) — DLL CUDA nạp LƯỜI lúc tính
+    toán thật nên lỗi né được vùng bắt, job chết cứng dù tưởng đã có đường lùi CPU.
+    Test giả lập đúng hình dạng lỗi thật: khởi tạo model KHÔNG lỗi, chỉ lỗi khi BẮT
+    ĐẦU DUYỆT segment (tương đương lúc cuBLAS mới thật sự được nạp)."""
+    import faster_whisper
+    import transcribe
+    monkeypatch.setattr(transcribe, "WORK_ROOT", tmp_path / "work")
+    monkeypatch.setattr(transcribe, "extract_audio", lambda src, dst: dst)
+    monkeypatch.setattr(transcribe, "probe_duration", lambda src: 10.0)
+    monkeypatch.setattr(transcribe, "enable_cuda", lambda: None)
+    monkeypatch.setattr(transcribe, "ghi_toc_do", lambda *a, **k: None)
+
+    class FakeSeg:
+        def __init__(self, i):
+            self.start, self.end, self.text = float(i), float(i + 1), f"đoạn {i}"
+
+    class GiaSegments:
+        def __init__(self, device):
+            self.device = device
+
+        def __iter__(self):
+            if self.device == "cuda":
+                raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+            for i in range(3):
+                yield FakeSeg(i)
+
+    class FakeInfo:
+        language = "vi"
+
+    class FakeBatchedPipeline:
+        def __init__(self, model):
+            self._device = model.device
+
+        def transcribe(self, *a, **kw):
+            return GiaSegments(self._device), FakeInfo()
+
+    class FakeWhisperModel:
+        def __init__(self, model_name, device, compute_type, cpu_threads=None):
+            self.device = device          # KHÔNG lỗi ở đây — đúng như thật
+
+    monkeypatch.setattr(faster_whisper, "WhisperModel", FakeWhisperModel)
+    monkeypatch.setattr(faster_whisper, "BatchedInferencePipeline", FakeBatchedPipeline)
+
+    data = transcribe.transcribe_survey(str(tmp_path / "video.mp4"), device="cuda")
+    assert data["device"] == "cpu", \
+        "phải lùi hẳn về CPU khi cuda lỗi GIỮA CHỪNG batch, không riêng lúc khởi tạo"
+    assert data["n_segments"] == 3
+
+
 def test_work_dir_bat_duoc_record_khac_trung_ten(tmp_path, monkeypatch):
     """Bug đã gặp: slug() chỉ lấy TÊN file nên hai record khác nhau cùng tên
     'test.mp4' dùng chung thư mục làm việc; cache tái dùng lẫn nhau -> draft TRỘN
