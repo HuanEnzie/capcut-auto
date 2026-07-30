@@ -1119,9 +1119,36 @@ def _man_hinh_cho():
 
     threading.Thread(target=cho_roi_dong, daemon=True).start()
     root.mainloop()
-    import webbrowser
-    webbrowser.open("http://127.0.0.1:8765")
-    t.join()                # giữ tiến trình sống — luồng uvicorn là daemon
+    _mo_cua_so_app(giu_song=t.join)
+
+
+def _mo_cua_so_app(giu_song):
+    """Mở CỬA SỔ APP RIÊNG bằng pywebview (WebView2), không phải tab trình duyệt hệ thống.
+
+    VÌ SAO: webbrowser.open() mở tab trình duyệt THẬT — có thanh địa chỉ hiện lồ lộ
+    "127.0.0.1:8765", nút back/forward, favicon trình duyệt. Người dùng thử app báo
+    đúng điều này: "trông thiếu chuyên nghiệp", không giống app desktop. pywebview mở
+    một cửa sổ riêng của app, không thanh địa chỉ, dùng WebView2 (Chromium) đã có sẵn
+    trên Windows 10/11 hiện đại — không cần cài thêm trình duyệt hay engine nào khác.
+
+    Đóng cửa sổ này = đóng app (webview.start() mới trả về lúc đó) — khác hẳn đóng một
+    TAB trình duyệt, vốn không tắt được server đứng phía sau. Vì vậy nhánh pywebview
+    thành công thì KHÔNG gọi giu_song(): để __main__ trôi hết, tiến trình tự thoát.
+
+    CÓ ĐƯỜNG LÙI: máy hiếm gặp thiếu WebView2 Runtime thì pywebview lỗi ngay lúc tạo
+    cửa sổ — bắt lỗi, lùi về webbrowser.open() như bản trước, gọi giu_song() để giữ
+    server sống (đóng tab lúc này KHÔNG được phép tắt app, vì không mở lại tab được
+    nữa nếu chưa biết mở app bằng cách gõ lại URL)."""
+    try:
+        import webview
+        webview.create_window("CapCut Auto Editor", "http://127.0.0.1:8765",
+                               width=1360, height=860, min_size=(960, 600))
+        webview.start()
+    except Exception as e:
+        print(f"  [!] Không mở được cửa sổ app riêng ({e}) — dùng trình duyệt hệ thống")
+        import webbrowser
+        webbrowser.open("http://127.0.0.1:8765")
+        giu_song()           # đóng TAB không phải đóng app — giữ tiến trình sống
 
 
 if __name__ == "__main__":

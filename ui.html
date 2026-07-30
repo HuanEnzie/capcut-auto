@@ -1637,9 +1637,16 @@ async function browse(btn, force){
   });
 }
 async function ingest(btn){
-  const sel = $('#fileSel'), path = sel.value;
+  /* #fileSel CHỈ tồn tại lúc CHƯA gắn record (khối "File record" còn là dropdown chọn).
+     Gắn xong thì khối đó đổi sang thẻ tĩnh hiện record_path — không còn #fileSel nữa,
+     mà nút Phân tích lúc đó mới BẬT (cần p.work_dir). Đọc thẳng sel.value trong mọi
+     trường hợp là gọi .value trên null đúng lúc nút thật sự bấm được — ném TypeError
+     NGAY DÒNG ĐẦU, im lặng hoàn toàn: không toast, không job, "bấm không có gì xảy ra".
+     Bắt bởi người dùng thật, không phải đoán. */
+  const sel = $('#fileSel');
+  const path = sel ? sel.value : (PROJ && PROJ.record_path) || '';
   if(!path || path.startsWith('—') || path.startsWith('đang')) return toast('Chưa chọn file record', true);
-  const label = sel.options[sel.selectedIndex].text;
+  const label = sel ? sel.options[sel.selectedIndex].text : path.split(/[\\/]/).pop();
   if(!await confirmBox('Phân tích record?', label + '\n\nChạy nền — theo dõi ở mục Tiến trình.')) return;
   await busy(btn, 'Đang gửi…', async () => {
     try{

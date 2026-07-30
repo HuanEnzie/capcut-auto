@@ -71,6 +71,7 @@ $pyArgs = @(
     "--collect-all","huggingface_hub","--collect-all","google.genai","--collect-all","google.auth",
     "--collect-all","uvicorn","--collect-all","fastapi","--collect-all","starlette",
     "--collect-all","pydantic","--collect-all","pydantic_core","--collect-all","yaml",
+    "--collect-all","webview",
     "--hidden-import","multipart","--hidden-import","watchdog"
 ) + $hiddenArgs + @("app.py")
 $outLog = "$env:TEMP\dong_goi_pyinstaller_out.txt"

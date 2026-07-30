@@ -25,12 +25,12 @@ Hai bước, hai công cụ khác nhau:
 đầu, ~194MB, KHÔNG commit git), chạy PyInstaller ở chế độ `--onedir`, rồi chép `ui.html`,
 `assets/{default,donor,fonts}`, `shorts/profiles/*.yaml`, `ffmpeg_bin/` vào cạnh `.exe`
 (những thứ này PyInstaller không tự gom vì không phải import Python). Ra
-`dist/CapCutAuto/CapCutAuto.exe`, **~474 MB, ~2400 file** (đo 30/07/2026).
+`dist/CapCutAuto/CapCutAuto.exe`, **~480 MB, ~2580 file** (đo 30/07/2026, bản có `pywebview`).
 
 `installer.iss` cần **Inno Setup** (tải bản chính thức tại
 [jrsoftware.org](https://jrsoftware.org/isinfo.php), hoặc thẳng từ
 [GitHub releases](https://github.com/jrsoftware/issrc/releases)). Nén `dist/CapCutAuto/`
-bằng LZMA2 xuống còn **~134 MB** — file duy nhất đưa cho người dùng.
+bằng LZMA2 xuống còn **~136 MB** — file duy nhất đưa cho người dùng.
 
 **Cài vào `%LocalAppData%\Programs\CapCutAuto`, KHÔNG PHẢI Program Files.** App ghi dữ
 liệu thật (`library.db`, `assets/user`, `shorts/work`, `.env`) vào chính thư mục chứa
@@ -63,10 +63,11 @@ installer thật, **cài — chạy — gỡ cài đặt** bằng `/VERYSILENT` 
 | Cài installer | `/VERYSILENT` → exit 0, 2408 file đúng vào `%LocalAppData%\Programs\CapCutAuto`, đăng ký đúng trong Add/Remove Programs |
 | Gỡ cài đặt | `/VERYSILENT` → exit 0, xoá sạch thư mục cài + Start Menu group |
 
-Riêng **hộp thoại chọn thư mục thật (click tương tác)** và **nội dung chính xác của hộp
-thoại xác nhận gỡ cài đặt** chưa xác nhận bằng mắt (không xin được quyền điều khiển màn
-hình lúc đóng gói bản này) — logic đã kiểm bằng cách khác (xem lỗi đã vá bên dưới), nhưng
-nên tự tay bấm thử một lần trước khi phát rộng.
+Riêng **pixel thật của cửa sổ pywebview** (chữ có hiện đúng font, có bị vỡ layout không)
+và **nội dung chính xác của hộp thoại xác nhận gỡ cài đặt** chưa xác nhận bằng mắt (không
+xin được quyền điều khiển màn hình lúc đóng gói bản này) — đã kiểm bằng cách khác (tiêu đề
+cửa sổ đúng qua `EnumWindows`, kết nối TCP thật tới server), nhưng nên tự tay mở app một
+lần trước khi phát rộng.
 
 ## Lỗi đã bắt được và vá (30/07/2026, do người dùng thật báo)
 
@@ -82,6 +83,24 @@ nên tự tay bấm thử một lần trước khi phát rộng.
 - **~6-8 giây console đen ngòm lúc khởi động** trông như treo. Vá: màn chờ tkinter
   (`_man_hinh_cho()`) — uvicorn chuyển xuống luồng nền, tk.mainloop() ở luồng chính, tự
   đóng + mở trình duyệt khi server bắt đầu trả lời thật (poll, không đoán thời gian).
+- **Nút "Phân tích" bấm không có phản ứng gì — không toast, không job.** `ingest()` trong
+  `ui.html` đọc thẳng `$('#fileSel').value` — nhưng `#fileSel` (dropdown chọn file) CHỈ
+  tồn tại lúc CHƯA gắn record; gắn xong thì khối đó đổi sang thẻ tĩnh, không còn dropdown,
+  ĐÚNG LÚC nút Phân tích mới bật lên (cần `p.work_dir`). Bấm vào là gọi `.value` trên
+  `null`, `TypeError` chết ngay dòng đầu handler — im lặng hoàn toàn, không lộ ra console
+  hay toast nào. Vá: đọc `PROJ.record_path` khi `#fileSel` không tồn tại. Kiểm bằng
+  click thật qua Browser pane (không phải suy luận): tạo dự án test, gắn record, bấm
+  Phân tích — job chạy thật (`asr-survey` bắt đầu).
+- **"Trông thiếu chuyên nghiệp" — mở tab trình duyệt hệ thống thay vì cửa sổ app riêng.**
+  `webbrowser.open()` mở đúng một TAB, có thanh địa chỉ lộ `127.0.0.1:8765`, không giống
+  desktop app. Vá: `pywebview` (dùng WebView2/Chromium có sẵn trên Windows 10/11) mở CỬA
+  SỔ RIÊNG không thanh địa chỉ, tiêu đề "CapCut Auto Editor". Có đường lùi: pywebview lỗi
+  (máy hiếm gặp thiếu WebView2 Runtime) thì tự lùi về `webbrowser.open()` như cũ, không
+  chặn app dùng được. Đóng cửa sổ pywebview = đóng app luôn (khác đóng tab trình duyệt,
+  vốn không tắt được server phía sau) — đúng kỳ vọng desktop app.
+  Kiểm bằng cách liệt kê cửa sổ hệ thống thật (Win32 `EnumWindows`, không phải đoán): thấy
+  đúng cửa sổ tiêu đề "CapCut Auto Editor" của tiến trình `.exe` vừa cài, có 4-5 kết nối
+  TCP thật tới cổng 8765 (đang tải nội dung app, không phải màn trắng).
 
 ## Giới hạn đã biết (chưa/không giải quyết ở bản này)
 
