@@ -1446,6 +1446,14 @@ ACTIONS['topic-trang'] = d => { TOPIC_TRANG = +d.t; veChuDe(); };
    tiếng Việt sai đủ nhiều để chuyện đó đáng lo thật. */
 let TS = null, TS_SACH = true;
 const mmss = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+/* Xuất đúng bản đang xem trên màn (theo TS_SACH), không phải luôn luôn bản sạch —
+   người soát lỗi ASR cần tải đúng thứ họ đang nhìn để đối chiếu ra ngoài app. */
+const vanBanTS = () => TS.dong.map(d =>
+  `[${mmss(d.start)}] ${TS_SACH ? d.text : (d.goc != null ? d.goc : d.text)}`).join('\n');
+const tenFileTS = () => {
+  const goc = (TS.record || 'loi-thoai').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+  return `${goc}_loi-thoai-${TS_SACH ? 'sach' : 'goc'}.txt`;
+};
 ACTIONS['xem-transcript'] = async () => {
   $('#mdTitle').textContent = 'Lời thoại';
   $('#mdBody').innerHTML = '<p class="muted small">Đang tải…</p>';
@@ -1460,6 +1468,23 @@ ACTIONS['xem-transcript'] = async () => {
   try{
     TS = await api(`/api/app-projects/${PROJ_ID}/transcript`);
   }catch(e){ $('#mdBody').innerHTML = `<p class="neg">${esc(String(e))}</p>`; return; }
+  const saoChep = document.createElement('button');
+  saoChep.className = 'btn ghost'; saoChep.textContent = 'Sao chép';
+  saoChep.onclick = async () => {
+    try{ await navigator.clipboard.writeText(vanBanTS()); toast('Đã sao chép lời thoại'); }
+    catch(e){ toast('Không sao chép được — trình duyệt chặn clipboard', true); }
+  };
+  const taiVe = document.createElement('button');
+  taiVe.className = 'btn ghost'; taiVe.textContent = 'Tải .txt';
+  taiVe.onclick = () => {
+    const url = URL.createObjectURL(new Blob([vanBanTS()], {type: 'text/plain;charset=utf-8'}));
+    const a = document.createElement('a');
+    a.href = url; a.download = tenFileTS();
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+  $('#mdActs').insertBefore(taiVe, dong);
+  $('#mdActs').insertBefore(saoChep, taiVe);
   $('#mdBody').innerHTML = `
     <div class="row" style="margin-bottom:10px">
       <input id="tsQ" placeholder="tìm trong lời thoại…" style="flex:1;min-width:200px">
