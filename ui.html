@@ -1155,7 +1155,7 @@ const vnTime = ms => {
 let WF = [];
 async function loadHome(){
   const box = $('#home'); box.innerHTML = skeleton(2);
-  const [w, d] = await Promise.all([api('/api/workflows'), api('/api/app-projects')]);
+  const [w, d, ov] = await Promise.all([api('/api/workflows'), api('/api/app-projects'), api('/api/overview')]);
   WF = w.workflows;
   const sanSang = WF.filter(x => x.san_sang);
   /* Bản đầu có một khối xanh to đùng "Bắt đầu một dự án mới" chiếm 1/3 màn hình mà
@@ -1163,6 +1163,13 @@ async function loadHome(){
      hai lời mời gọi cùng làm một việc. Bỏ nó: nút chính về cùng hàng với nhãn mục,
      phần trên cùng dành cho thứ người dùng thật sự chọn. */
   box.innerHTML = `
+    ${ov.ffmpeg === false ? `<div class="empty" style="text-align:left;padding:var(--spacing-16);
+        border-color:var(--color-danger);margin-bottom:var(--element-gap)">
+       <b>Không thấy ffmpeg trên máy này</b> App vẫn mở được, nhưng dựng draft sẽ chết
+       giữa chừng — sau khi đã bóc lời xong. Tải bản "essentials" tại
+       <a href="https://www.gyan.dev/ffmpeg/builds/" target="_blank" rel="noopener">gyan.dev/ffmpeg/builds</a>,
+       giải nén rồi thêm thư mục <span class="mono">bin</span> vào PATH, sau đó khởi động lại app.
+     </div>` : ''}
     <div class="secthead">
       <div>
         <h2 style="margin:0">Quy trình</h2>

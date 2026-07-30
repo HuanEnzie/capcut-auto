@@ -8,10 +8,27 @@ Manifest: library.db (sqlite trong stdlib, không cần cài thêm).
 
   python assetlib.py --stats
 """
-import argparse, hashlib, json, os, re, shutil, sqlite3, subprocess, time
+import argparse, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+
+def _goc() -> Path:
+    """Thư mục gốc: chứa CẢ mã nguồn LẪN dữ liệu người dùng (library.db, assets/user,
+    .env, shorts/work...) — cùng một chỗ, đúng triết lý ROOT hiện tại.
+
+    Đóng gói .exe (PyInstaller --onedir): KHÔNG được dùng __file__ để suy ROOT. Dưới
+    bundle, __file__ trỏ vào bên trong thư mục nội bộ của gói (vd _internal/) — ghi
+    dữ liệu vào đó thì mất sạch mỗi khi cập nhật bản mới (thư mục đó bị ghi đè), và
+    với --onefile thì mất NGAY LẬP TỨC lúc thoát app (giải nén ra thư mục tạm, xoá
+    sau khi đóng). Phải dùng thư mục chứa chính file .exe — nơi người dùng thấy được
+    và tồn tại lâu dài. `sys.frozen` là cờ PyInstaller tự đặt lúc chạy dưới dạng đóng
+    gói; không có cờ đó (chạy `python app.py` khi phát triển) thì giữ hành vi cũ."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+ROOT = _goc()
 ASSETS = ROOT / "assets"
 DB = ROOT / "library.db"
 
@@ -135,6 +152,14 @@ def khoi_tao(im_lang: bool = True) -> list:
     if tao and not im_lang:
         print("Đã tạo thư mục dữ liệu:", ", ".join(tao))
     return tao
+
+
+def co_ffmpeg() -> bool:
+    """Bản .exe đóng gói bỏ qua cai_dat.bat (nơi DUY NHẤT trước đây kiểm `where
+    ffmpeg`) — không kiểm lại thì thiếu ffmpeg chỉ lộ ra khi một job dựng draft chết
+    giữa chừng với traceback khó hiểu, sau khi đã bóc lời xong. Đúng kiểu hỏng im
+    lặng luật cứng #2 cấm. Gọi lúc khởi động app, hiện cảnh báo ngay trên Tổng quan."""
+    return shutil.which("ffmpeg") is not None
 
 
 # SFX là ĐIỂM NHẤN, không phải nhạc nền. Kho học từ draft lẫn cả file dài — đo

@@ -15,3 +15,9 @@ quarantine/
 .venv/
 capcut-auto-v1.zip
 shorts/downloads/
+
+# Đóng gói .exe (PyInstaller) — sinh ra từ dong_goi.ps1, không phải mã nguồn.
+# Vài trăm MB do faster-whisper/ctranslate2 — lỡ commit là lặp lại đúng lỗi 27/07.
+build/
+dist/
+*.spec

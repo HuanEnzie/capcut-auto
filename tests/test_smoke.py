@@ -649,3 +649,39 @@ def test_uoc_luong_thoi_gian_khong_hardcode_toc_do_may_dev():
     src = inspect.getsource(app.api_browse)
     assert "toc_do_asr" in src, "phải ước lượng theo tốc độ đo được trên máy đang chạy"
     assert "/ 30 / 60" not in src, "còn hardcode hệ số của máy dev"
+
+
+def test_root_dung_thu_muc_chua_exe_khi_dong_goi(monkeypatch, tmp_path):
+    """Bug đã gặp 30/07: assetlib.ROOT = Path(__file__).resolve().parent. Đóng gói
+    PyInstaller (--onedir) thì __file__ trỏ vào bên trong _internal/ (gói nội bộ) —
+    ghi library.db/.env/assets/user vào đó thì MẤT SẠCH mỗi lần cập nhật bản mới, và
+    với --onefile thì mất NGAY LẬP TỨC lúc thoát app. Đo thật (chạy .exe từ thư mục
+    tách biệt): library.db/snapshots/quarantine/renders/assets/user đều phải nằm
+    CẠNH file .exe, không phải trong thư mục nội bộ của gói."""
+    import importlib
+    import assetlib
+
+    gia_exe = tmp_path / "may_khac" / "CapCutAuto.exe"
+    gia_exe.parent.mkdir(parents=True)
+    gia_exe.write_bytes(b"")
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys.executable", str(gia_exe))
+    try:
+        assert assetlib._goc() == gia_exe.parent, \
+            "đóng gói thì ROOT phải là thư mục chứa .exe, không phải __file__"
+    finally:
+        # PHẢI undo() TRƯỚC reload — monkeypatch chỉ tự khôi phục sys.frozen SAU KHI
+        # hàm test này kết thúc hoàn toàn (kể cả finally), nên reload ở đây mà không
+        # undo trước sẽ đọc NGAY GIÁ TRỊ GIẢ, ghi ROOT sai vĩnh viễn cho mọi test sau
+        # trong cùng lượt chạy — lỗi này tự bắt được khi chạy thật, không phải đoán.
+        monkeypatch.undo()
+        importlib.reload(assetlib)
+
+
+def test_khong_frozen_van_giu_hanh_vi_cu():
+    """Chạy dev (`python app.py`, không đóng gói) thì ROOT phải y hệt trước khi vá —
+    bản vá cho .exe không được đổi hành vi khi KHÔNG đóng gói."""
+    import assetlib
+    assert not getattr(__import__("sys"), "frozen", False), \
+        "test chạy trong dev, sys.frozen không được tự bật"
+    assert assetlib.ROOT == assetlib.Path(assetlib.__file__).resolve().parent

@@ -26,7 +26,14 @@ from pathlib import Path
 
 from cuda_setup import enable_cuda
 
-WORK_ROOT = Path(__file__).parent / "work"
+# assetlib.ROOT (không phải __file__) — đóng gói .exe thì __file__ trỏ vào bên trong
+# gói nội bộ, ghi transcript cache vào đó là mất khi cập nhật bản mới. Import muộn
+# (không phải ở đầu file như thường lệ) để giữ đúng thứ tự bootstrap: script này còn
+# chạy độc lập (`python transcribe.py ...`) trước khi shorts/ được thêm vào sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import assetlib
+
+WORK_ROOT = assetlib.ROOT / "shorts" / "work"
 
 # Trần luồng cho CTranslate2 — xem đo đạc trong _luong_cpu(). Vượt trần là sập cứng
 # (stack overflow trong ctranslate2.dll), không phải chậm đi.

@@ -877,6 +877,7 @@ def api_overview():
     c.close()
     return {"projects": len(projects), "topics": n_topics, "built": len(built),
             "drafts": len(drafts), "todo": todo, "lib": lib, "owners": owners,
+            "ffmpeg": assetlib.co_ffmpeg(),
             "capcut": {k: (str(v) if k in ("draft", "cache", "home") else v)
                        for k, v in assetlib.find_capcut().items()}}
 
@@ -1055,11 +1056,20 @@ def api_agent_reset(session: str = "default"):
 @app.get("/", response_class=HTMLResponse)
 def index():
     # no-store: đang sửa giao diện liên tục, để trình duyệt cache là mở ra thấy bản CŨ
+    # ROOT chứ không phải __file__: đóng gói .exe thì __file__ trỏ vào bên trong gói
+    # nội bộ (xem assetlib._goc()), ui.html phải nằm ngay cạnh file .exe.
     return HTMLResponse(
-        (Path(__file__).parent / "ui.html").read_text(encoding="utf-8"),
+        (ROOT / "ui.html").read_text(encoding="utf-8"),
         headers={"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"})
 
 
 if __name__ == "__main__":
     print("  App: http://127.0.0.1:8765")
+    # Bản .exe đóng gói chạy bằng double-click, không còn chay.bat bao quanh để tự mở
+    # trình duyệt (chay.bat gọi `start "" http://...` TRƯỚC khi chạy python). Tự mở ở
+    # đây cho cả hai trường hợp — chạy dev vẫn tiện, không hại gì.
+    if getattr(sys, "frozen", False):
+        import threading
+        import webbrowser
+        threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:8765")).start()
     uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
