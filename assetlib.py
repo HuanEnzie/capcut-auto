@@ -33,6 +33,26 @@ ASSETS = ROOT / "assets"
 DB = ROOT / "library.db"
 
 
+def _ghep_ffmpeg_vao_path() -> None:
+    """Bản .exe đóng gói mang theo ffmpeg.exe/ffprobe.exe riêng ở `ffmpeg_bin/` cạnh
+    app (dong_goi.ps1 tải về — xem docs/DONG_GOI.md), để người dùng không phải tự cài.
+
+    Chèn PATH ở đây thay vì sửa từng lệnh gọi: cả app gọi "ffmpeg"/"ffprobe" bằng
+    TÊN TRẦN, dựa vào PATH của hệ điều hành tự tìm — rải rác 13 chỗ trong 8 file.
+    Sửa từng chỗ thành đường dẫn tuyệt đối thì phải sửa cả 13 chỗ VÀ nhớ sửa tiếp
+    mỗi khi thêm chỗ gọi mới; chèn PATH một lần ở đây thì mọi chỗ — kể cả chỗ sẽ
+    thêm sau này — tự động dùng đúng bản bundle mà không ai phải nhớ gì cả. Phải
+    chạy TRƯỚC bất kỳ subprocess.run(["ffmpeg"...]) hay shutil.which("ffmpeg") nào
+    trong toàn app — nên gọi ngay tại đây, lúc assetlib (module bootstrap, mọi nơi
+    đều import đầu tiên) được nạp, không đợi tới app.py."""
+    thu_muc = ROOT / "ffmpeg_bin"
+    if (thu_muc / "ffmpeg.exe").exists():
+        os.environ["PATH"] = str(thu_muc) + os.pathsep + os.environ.get("PATH", "")
+
+
+_ghep_ffmpeg_vao_path()
+
+
 def load_env(path: Path = None) -> int:
     """Nạp API key từ file .env cạnh mã nguồn.
 

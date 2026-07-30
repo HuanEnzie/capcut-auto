@@ -1073,19 +1073,66 @@ def index():
         headers={"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"})
 
 
+def _man_hinh_cho():
+    """Màn chờ lúc khởi động bản .exe đóng gói.
+
+    VÌ SAO: bấm .exe xong có tới ~6 giây cửa sổ console đen ngòm không phản hồi gì —
+    lần đầu Windows Defender quét file mới copy còn lâu hơn nữa. Người quen desktop
+    app bình thường thấy vậy tưởng app treo/lỗi, bấm thêm vài phát hoặc tắt luôn.
+
+    Tkinter phải chạy trên LUỒNG CHÍNH (như _chon_bang_tkinter đã ghi chú) — nên đảo
+    ngược cấu trúc cũ: uvicorn chuyển xuống luồng nền, luồng chính giữ tk.mainloop().
+    uvicorn tự bỏ qua cài signal handler khi không chạy ở luồng chính (server.py:
+    `if threading.current_thread() is not threading.main_thread(): return`) — không
+    lo mất khả năng Ctrl+C, chỉ là do luồng nền lo, không phải signal module.
+
+    Splash tự đóng + tự mở trình duyệt ngay khi server bắt đầu TRẢ LỜI THẬT (poll
+    /api/overview), không phải sau một khoảng thời gian đoán mò — máy chậm hơn máy
+    dev (CPU thay vì GPU, cold-start bị Defender quét) mà đoán mò 1,2 giây thì mở
+    trình duyệt vào lúc server còn chưa lên, ra trang "không kết nối được"."""
+    import threading, time, urllib.request
+    import tkinter as tk
+
+    t = threading.Thread(
+        target=lambda: uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning"),
+        daemon=True)
+    t.start()
+
+    root = tk.Tk()
+    root.title("CapCut Auto Editor")
+    root.attributes("-topmost", True)
+    w, h = 360, 130
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+    root.resizable(False, False)
+    tk.Label(root, text="CapCut Auto Editor", font=("Segoe UI", 13, "bold")).pack(pady=(22, 6))
+    tk.Label(root, text="Đang khởi động…", font=("Segoe UI", 10)).pack()
+
+    def cho_roi_dong():
+        for _ in range(300):                              # trần 60s (300 × 0,2s)
+            try:
+                urllib.request.urlopen("http://127.0.0.1:8765/api/overview", timeout=1)
+                break
+            except Exception:
+                time.sleep(0.2)
+        root.after(0, root.destroy)
+
+    threading.Thread(target=cho_roi_dong, daemon=True).start()
+    root.mainloop()
+    import webbrowser
+    webbrowser.open("http://127.0.0.1:8765")
+    t.join()                # giữ tiến trình sống — luồng uvicorn là daemon
+
+
 if __name__ == "__main__":
     # Tiến trình con của /api/pick gọi lại chính file/exe này kèm --pick — phải chặn
-    # NGAY ĐẦU, trước dòng in "App: ..." và trước uvicorn.run(), nếu không tiến trình
-    # con lại thành một bản app thứ hai tranh cổng 8765 với bản gốc.
+    # NGAY ĐẦU, trước dòng in "App: ..." và trước server, nếu không tiến trình con
+    # lại thành một bản app thứ hai tranh cổng 8765 với bản gốc.
     if len(sys.argv) > 1 and sys.argv[1] == "--pick":
         _chon_bang_tkinter(sys.argv[2] if len(sys.argv) > 2 else "thu_muc")
         sys.exit(0)
     print("  App: http://127.0.0.1:8765")
-    # Bản .exe đóng gói chạy bằng double-click, không còn chay.bat bao quanh để tự mở
-    # trình duyệt (chay.bat gọi `start "" http://...` TRƯỚC khi chạy python). Tự mở ở
-    # đây cho cả hai trường hợp — chạy dev vẫn tiện, không hại gì.
     if getattr(sys, "frozen", False):
-        import threading
-        import webbrowser
-        threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:8765")).start()
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
+        _man_hinh_cho()
+    else:
+        uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")

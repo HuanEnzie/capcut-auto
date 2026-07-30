@@ -21,3 +21,12 @@ shorts/downloads/
 build/
 dist/
 *.spec
+
+# ffmpeg.exe/ffprobe.exe bundle kèm .exe đóng gói — dong_goi.ps1 tự tải về cache
+# này (~194MB, xem docs/DONG_GOI.md), KHÔNG commit — cùng lý do như build/dist/.
+ffmpeg_bin_cache/
+ffmpeg_bin/
+
+# Installer .exe sinh ra từ installer.iss (Inno Setup) — file nhị phân ~450MB,
+# build lại được bất cứ lúc nào từ dist/CapCutAuto/, không phải mã nguồn.
+installer_out/
