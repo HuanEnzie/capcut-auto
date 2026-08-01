@@ -291,6 +291,66 @@ def test_bao_ngay_khi_thieu_draft_mau():
         cb.kiem_tra_draft_mau("khong-co-draft-mau-nay")
 
 
+# ─────────────── EQ Gym AI Editor — dựng draft theo kịch bản CSV ───────────────
+
+def test_doc_kich_ban_csv_doc_dung_cot(tmp_path):
+    import capcut_build as cb
+    p = tmp_path / "kich_ban.csv"
+    p.write_text(
+        "Scene,Duration,Prompt,VO,Img1Name,Img1Data\n"
+        'C01,10,"prompt dài dòng, có phẩy",Xin chào các bạn,nv_hana.png,AAAA\n'
+        'C02,8.5,khác,Hôm nay chúng ta học EQ,nv_vy.png,BBBB\n',
+        encoding="utf-8-sig")
+    canh = cb.doc_kich_ban_csv(p)
+    assert [c["scene"] for c in canh] == ["C01", "C02"], "phải giữ ĐÚNG thứ tự dòng — đó là thứ tự timeline"
+    assert canh[0]["duration_s"] == 10.0
+    assert canh[1]["duration_s"] == 8.5
+    assert canh[0]["vo"] == "Xin chào các bạn"
+
+
+def test_doc_kich_ban_csv_thieu_cot_bat_buoc_bao_ro(tmp_path):
+    """Thiếu cột Duration/VO thì phải báo NGAY lúc đọc CSV, không phải lúc dựng
+    draft giữa chừng mới lộ ra thiếu gì."""
+    import capcut_build as cb
+    p = tmp_path / "thieu_cot.csv"
+    p.write_text("Scene,Prompt\nC01,abc\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="thiếu cột"):
+        cb.doc_kich_ban_csv(p)
+
+
+def test_doc_kich_ban_csv_duration_khong_hop_le_bao_ro(tmp_path):
+    import capcut_build as cb
+    p = tmp_path / "duration_hong.csv"
+    p.write_text("Scene,Duration,VO\nC01,0,chào\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="Duration"):
+        cb.doc_kich_ban_csv(p)
+
+
+def test_tim_nguon_canh_khop_dung_ten_truoc_ten_co_hau_to(tmp_path):
+    """Nhiều file cùng khớp tiền tố Scene (C01.mp4 và C01_v2.mp4) thì phải ưu tiên
+    tên TRÙNG KHỚP TUYỆT ĐỐI — người dùng chủ động chọn bản chính bằng cách đặt tên
+    đúng, không đoán bản nào 'mới hơn' hộ họ."""
+    import capcut_build as cb
+    (tmp_path / "C01_v2.mp4").write_bytes(b"x")
+    (tmp_path / "C01.mp4").write_bytes(b"x")
+    got = cb.tim_nguon_canh("C01", tmp_path)
+    assert got.name == "C01.mp4"
+
+
+def test_tim_nguon_canh_khong_phan_biet_hoa_thuong(tmp_path):
+    import capcut_build as cb
+    (tmp_path / "c01.png").write_bytes(b"x")
+    got = cb.tim_nguon_canh("C01", tmp_path)
+    assert got.name == "c01.png"
+
+
+def test_tim_nguon_canh_khong_co_thi_tra_ve_none(tmp_path):
+    """Không tìm thấy trả None (không ném lỗi ở đây) — build_from_csv gom hết các
+    scene thiếu rồi báo MỘT LƯỢT, thay vì dừng ngay ở scene đầu tiên thiếu."""
+    import capcut_build as cb
+    assert cb.tim_nguon_canh("C99", tmp_path) is None
+
+
 def test_chuoi_structured_output_co_model_han_ngach_cao():
     """Bug đã gặp: chuỗi structured output toàn model RPD 20 -> cạn giữa chừng,
     build chết ở phút thứ mười."""

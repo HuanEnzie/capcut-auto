@@ -14,7 +14,7 @@ CÁCH DÙNG:
   python capcut_build.py "E:\\E Download\\DrStone" --name "DrStone_AUTO" --yes
   python capcut_build.py "<folder>" --name "<draft>" --model small --yes
 """
-import argparse, copy, difflib, json, os, re, subprocess, sys, uuid
+import argparse, copy, csv, difflib, json, os, re, subprocess, sys, uuid
 from pathlib import Path
 
 import assetlib
@@ -548,9 +548,330 @@ def build(folder, out_name, model_name, do_write, caption_mode="template",
     print(f"\n✅ Đã tạo draft: {out_dir}")
     print("   Mở CapCut để kiểm tra (draft sẽ được tự nhận vào danh sách).")
 
+
+# ══════════════════════ EQ GYM AI EDITOR — dựng theo kịch bản CSV ══════════════════════
+# Khác build() ở trên (folder tự suy thứ tự + voice chia đều): ở đây có SẴN kịch bản
+# đúng nghĩa — mỗi dòng CSV là MỘT cảnh, ĐÚNG THỨ TỰ DÒNG trên timeline, dài ĐÚNG số
+# giây khai trong cột Duration, lời đọc ĐÚNG cột VO. Không suy, không đoán, không ASR
+# lại — dữ liệu đã có sẵn và chính xác hơn bất kỳ suy luận nào từ audio thật.
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+CSV_COT_BAT_BUOC = {"Scene", "Duration", "VO"}
+
+
+def doc_kich_ban_csv(csv_path) -> list:
+    """Đọc CSV kịch bản. Cột Prompt/Img*Name/Img*Data (nếu có) là dữ liệu cho bước
+    TẠO VIDEO BẰNG AI ở NGOÀI app này (Img*Data là ảnh tham chiếu mã hoá base64,
+    có dòng nặng vài chục KB) — cố tình KHÔNG đọc tới, khỏi tải hàng MB vô ích.
+
+    Duration=0 hoặc không đọc được số thì DỪNG NGAY — cảnh không có độ dài thì
+    không thể xếp lên timeline, và lỗi đó phải lộ ra lúc đọc CSV, không phải lúc
+    ffmpeg ghép clip thất bại với thông báo khó hiểu."""
+    canh = []
+    with open(csv_path, encoding="utf-8-sig", newline="") as f:
+        r = csv.DictReader(f)
+        thieu = CSV_COT_BAT_BUOC - set(r.fieldnames or [])
+        if thieu:
+            raise RuntimeError(
+                f"CSV thiếu cột bắt buộc: {', '.join(sorted(thieu))}. "
+                f"Cột hiện có: {', '.join(r.fieldnames or [])}")
+        for i, row in enumerate(r, 1):
+            scene = (row.get("Scene") or "").strip()
+            if not scene:
+                continue
+            try:
+                dur = float(row.get("Duration") or 0)
+            except ValueError:
+                dur = 0
+            if dur <= 0:
+                raise RuntimeError(
+                    f"Dòng {i} (Scene '{scene}'): Duration không hợp lệ "
+                    f"({row.get('Duration')!r}) — phải là số giây > 0.")
+            canh.append({"scene": scene, "duration_s": dur, "vo": (row.get("VO") or "").strip()})
+    if not canh:
+        raise RuntimeError(f"CSV không có dòng nào có Scene: {csv_path}")
+    return canh
+
+
+def tim_nguon_canh(scene: str, source_dir) -> Path:
+    """Tìm file trong source_dir có TÊN BẮT ĐẦU bằng đúng mã Scene, không phân biệt
+    hoa/thường — Scene 'C01' khớp C01.mp4, c01_v2.mov, C01.png. Nhiều file cùng
+    khớp thì ưu tiên tên TRÙNG KHỚP TUYỆT ĐỐI (C01.mp4) trước file có hậu tố
+    (C01_v2.mp4), để người dùng chủ động chọn bản nào là bản chính bằng cách đặt
+    tên đúng — không đoán bản nào "mới hơn" hộ họ."""
+    exts = VIDEO_EXTS | IMAGE_EXTS
+    ung_vien = sorted(p for p in Path(source_dir).iterdir()
+                      if p.is_file() and p.suffix.lower() in exts
+                      and p.stem.lower().startswith(scene.lower()))
+    if not ung_vien:
+        return None
+    khop_dung = [p for p in ung_vien if p.stem.lower() == scene.lower()]
+    return (khop_dung or ung_vien)[0]
+
+
+def _anh_thanh_clip_tinh(img_path: Path, dur_s: float, cache_dir: Path) -> Path:
+    """Ảnh slide -> clip video tĩnh đúng thời lượng (ffmpeg), rồi đi chung một
+    đường dựng video-track với clip AI-gen thật ở dưới.
+
+    VÌ SAO không tự chế material type="photo" của CapCut: dự án CHƯA có draft mẫu
+    nào chứa loại material đó để soi đúng cấu trúc JSON thật — bịa theo trí nhớ là
+    rủi ro hỏng draft mà CapCut không báo lỗi rõ ràng (mở lên thấy trắng hoặc app
+    treo). ffmpeg thì đã được đo và tin cậy trong toàn bộ pipeline sẵn có."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out = cache_dir / f"{img_path.stem}_tinh_{dur_s:.2f}s.mp4"
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    subprocess.run(
+        ["ffmpeg", "-y", "-loop", "1", "-i", str(img_path), "-t", f"{dur_s:.3f}",
+         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,"
+                "crop=1080:1920,fps=30", "-pix_fmt", "yuv420p", "-an", str(out)],
+        check=True, capture_output=True)
+    return out
+
+
+def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
+                    caption_mode="template", cap_chars=18, cap_words=5) -> dict:
+    """Dựng 1 draft CapCut ĐÚNG theo kịch bản CSV (quy trình EQ Gym AI Editor).
+
+    Khác build(): timing từng cảnh lấy từ cột Duration (không chia đều theo voice),
+    caption lấy thẳng từ cột VO (không ASR lại — kịch bản đã đúng sẵn), và MỘT file
+    voice DUY NHẤT chạy xuyên suốt toàn bộ timeline làm audio track.
+
+    Thiếu nguồn cho scene nào -> DỪNG NGAY, liệt kê đủ tên scene thiếu MỘT LƯỢT
+    (luật cứng #2: không hỏng im lặng) — không dựng draft cụt cảnh rồi để người
+    dùng tự phát hiện khi mở CapCut lên."""
+    csv_path, source_dir, voice_path = Path(csv_path), Path(source_dir), Path(voice_path)
+    # CHỈ cần DONOR_VIDEO ("282new", đã đóng gói kèm app) — KHÔNG dùng DONOR_TEXT
+    # ("0720") như build() gốc. "0720" chỉ tồn tại trên đúng máy dev làm ra nó, chưa
+    # từng được đóng gói (khác 282new — cái đã bị lỗi y hệt này một lần, xem
+    # test_draft_mau_di_theo_app). shorts/build_short_draft.py (luồng chính) đã tự
+    # vá đúng lỗi này từ trước bằng cách dùng 282new cho CẢ HAI vai trò — nó có đủ
+    # video-seg lẫn caption template. Dùng lại đúng cách đã chứng minh chạy được.
+    kiem_tra_draft_mau(DONOR_VIDEO)
+    if not voice_path.exists():
+        raise RuntimeError(f"Không thấy file voice: {voice_path}")
+    canh_list = doc_kich_ban_csv(csv_path)
+
+    thieu, nguon = [], {}
+    for c in canh_list:
+        p = tim_nguon_canh(c["scene"], source_dir)
+        if p is None:
+            thieu.append(c["scene"])
+        else:
+            nguon[c["scene"]] = p
+    if thieu:
+        raise RuntimeError(
+            f"Thiếu file nguồn cho {len(thieu)}/{len(canh_list)} cảnh: {', '.join(thieu)}. "
+            f"Tên file trong '{source_dir}' phải bắt đầu bằng đúng mã Scene (vd C01.mp4).")
+
+    print(f"Kịch bản : {len(canh_list)} cảnh, tổng khai báo {sum(c['duration_s'] for c in canh_list):.1f}s")
+    print(f"Voice    : {voice_path.name}")
+
+    cache_dir = voice_path.parent / ".eqgym_cache"
+    for c in canh_list:
+        p = nguon[c["scene"]]
+        if p.suffix.lower() in IMAGE_EXTS:
+            print(f"  [{c['scene']}] ảnh slide -> clip tĩnh {c['duration_s']:.1f}s...")
+            nguon[c["scene"]] = _anh_thanh_clip_tinh(p, c["duration_s"], cache_dir)
+
+    vinfo = probe(voice_path)
+    V = vinfo["duration_us"]
+
+    # ---- donor (chỉ 282new — xem giải thích ở kiem_tra_draft_mau phía trên) ----
+    dv = load_draft(DONOR_VIDEO)
+    dt = dv
+    vtrack_src = next(t for t in dv["tracks"] if t["type"] == "video")
+    seg_tpl = vtrack_src["segments"][0]
+    ref_units = []
+    prim_arr, prim_mat = find_mat(dv, seg_tpl["material_id"])
+    for rid in seg_tpl["extra_material_refs"]:
+        a, m = find_mat(dv, rid)
+        ref_units.append((a, m))
+    trans_tpl = dv["materials"]["transitions"][0]
+    atrack_src = next(t for t in dt["tracks"] if t["type"] == "audio")
+    aseg_tpl = atrack_src["segments"][0]
+    _, amat_tpl = find_mat(dt, aseg_tpl["material_id"])
+
+    c = copy.deepcopy(dv)
+    c["tracks"] = []
+    for k in list(c["materials"].keys()):
+        if isinstance(c["materials"][k], list):
+            c["materials"][k] = []
+    for k in list(c.get("keyframes", {}).keys()):
+        if isinstance(c["keyframes"][k], list):
+            c["keyframes"][k] = []
+    c["id"] = uid()
+    c["name"] = out_name
+    c["duration"] = V
+
+    def add_mat(arr, obj):
+        c["materials"].setdefault(arr, []).append(obj)
+
+    # ---- VIDEO TRACK — timing ĐÚNG Duration từng cảnh, không chia đều ----
+    vtrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in vtrack_src.items()}
+    vtrack["id"] = uid()
+    start = 0
+    for i, cnh in enumerate(canh_list):
+        clip = nguon[cnh["scene"]]
+        ci = probe(clip)
+        slice_us = int(round(cnh["duration_s"] * 1_000_000))
+        seg = copy.deepcopy(seg_tpl)
+        seg["id"] = uid()
+        vm = copy.deepcopy(prim_mat)
+        vm["id"] = uid()
+        vm["path"] = str(clip).replace("\\", "/")
+        vm["material_name"] = f"{cnh['scene']} — {clip.stem}"
+        vm["duration"] = ci["duration_us"]
+        if ci["width"]:
+            vm["width"], vm["height"] = ci["width"], ci["height"]
+        vm["has_audio"] = ci["has_audio"]
+        add_mat(prim_arr, vm)
+        seg["material_id"] = vm["id"]
+        newrefs = []
+        for arr, m in ref_units:
+            if m is None:
+                continue
+            nm = copy.deepcopy(m)
+            nm["id"] = uid()
+            add_mat(arr, nm)
+            newrefs.append((arr, nm))
+        native = ci["duration_us"]
+        if native >= slice_us:
+            src_dur = slice_us; speed = 1.0
+        else:
+            # Clip AI-gen ngắn hơn Duration khai báo trong CSV — kéo giãn tốc độ để
+            # lấp đủ chỗ, thay vì để hở khoảng đen giữa hai cảnh trên timeline.
+            src_dur = native; speed = round(native / slice_us, 6) if slice_us else 1.0
+        seg["source_timerange"] = {"start": 0, "duration": src_dur}
+        seg["target_timerange"] = {"start": start, "duration": slice_us}
+        seg["speed"] = speed
+        seg["volume"] = 0.0            # tắt tiếng gốc clip — chỉ dùng voiceover chung
+        seg["last_nonzero_volume"] = 0.0
+        for arr, nm in newrefs:
+            if arr == "speeds":
+                nm["speed"] = speed
+                if "curve_speed" in nm:
+                    nm["curve_speed"] = None
+        ref_ids = [nm["id"] for _, nm in newrefs]
+        if i > 0:
+            tr = copy.deepcopy(trans_tpl)
+            tr["id"] = uid()
+            add_mat("transitions", tr)
+            ref_ids.insert(2, tr["id"])
+        seg["extra_material_refs"] = ref_ids
+        seg["render_index"] = i
+        vtrack["segments"].append(seg)
+        start += slice_us
+    c["tracks"].append(vtrack)
+    # Tổng Duration khai báo trong CSV có thể lệch với độ dài voice thật (VD kịch
+    # bản ước lượng 8-10s/cảnh nhưng giọng đọc thật nhanh/chậm hơn) — KHÔNG tự co
+    # giãn để che lệch: báo rõ số giây lệch, người dùng tự quyết sửa CSV hay thu
+    # lại voice, giấu đi là hỏng im lặng.
+    if abs(start - V) > 500_000:
+        print(f"⚠️  Tổng Duration các cảnh ({start/1e6:.1f}s) lệch với voice thật "
+              f"({V/1e6:.1f}s) — {'thiếu' if start < V else 'thừa'} khoảng "
+              f"{abs(start-V)/1e6:.1f}s so với giọng đọc.")
+
+    # ---- AUDIO TRACK — một voice chung cho toàn bộ timeline ----
+    atrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in atrack_src.items()}
+    atrack["id"] = uid()
+    am = copy.deepcopy(amat_tpl)
+    am["id"] = uid()
+    am["path"] = str(voice_path).replace("\\", "/")
+    am["name"] = voice_path.name
+    am["duration"] = V
+    add_mat("audios", am)
+    aseg = copy.deepcopy(aseg_tpl)
+    aseg["id"] = uid()
+    aseg["material_id"] = am["id"]
+    aseg["extra_material_refs"] = []
+    aseg["source_timerange"] = {"start": 0, "duration": V}
+    aseg["target_timerange"] = {"start": 0, "duration": V}
+    atrack["segments"].append(aseg)
+    c["tracks"].append(atrack)
+
+    # ---- CAPTION TRACK — lấy THẲNG từ cột VO, mốc theo Duration tích luỹ ----
+    # Không word-level timing thật (không ASR) -> mỗi cảnh là MỘT khối caption
+    # nguyên câu, hiện suốt cảnh đó; rechunk() vẫn cắt bớt nếu câu quá dài.
+    caps = []
+    t0 = 0
+    for cnh in canh_list:
+        dur_ms = int(round(cnh["duration_s"] * 1000))
+        if cnh["vo"]:
+            caps.append({"text": cnh["vo"], "start_ms": t0, "end_ms": t0 + dur_ms, "words": []})
+        t0 += dur_ms
+    if caps:
+        n0 = len(caps)
+        caps = rechunk(caps, cap_chars, cap_words)
+        print(f"  [caption] {n0} cảnh có lời -> {len(caps)} cụm ngắn (<= {cap_chars} ký tự)")
+    unit = extract_caption_unit(dt) if caption_mode == "template" else None
+    if caps and caption_mode == "template" and unit is None:
+        print("  [caption] Donor không có caption-template -> chuyển sang text thường.")
+        caption_mode = "plain"
+    text_tpl = pick_white_text_material(dt) if caption_mode != "template" else None
+    ttrack_src = next(t for t in dt["tracks"] if t["type"] == "text")
+    tseg_tpl = ttrack_src["segments"][0]
+    if caps:
+        ttrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in ttrack_src.items()}
+        ttrack["id"] = uid()
+        for cap in caps:
+            if caption_mode == "template":
+                ts, mats = gen_template_caption(unit, cap)
+                for arr, m in mats:
+                    add_mat(arr, m)
+                ttrack["segments"].append(ts)
+            else:
+                tm = copy.deepcopy(text_tpl)
+                tm["id"] = uid()
+                tm["content"] = make_caption_content(cap["text"])
+                tm["words"] = make_words(cap)
+                add_mat("texts", tm)
+                ts = copy.deepcopy(tseg_tpl)
+                ts["id"] = uid()
+                ts["material_id"] = tm["id"]
+                ts["extra_material_refs"] = []
+                ts["template_id"] = ""
+                ts["clip"] = {"scale": {"x": 1.0, "y": 1.0}, "rotation": 0.0,
+                              "transform": {"x": 0.0, "y": -0.56},
+                              "flip": {"vertical": False, "horizontal": False}, "alpha": 1.0}
+                dur = max(120000, (cap["end_ms"] - cap["start_ms"]) * 1000)
+                ts["source_timerange"] = None
+                ts["target_timerange"] = {"start": cap["start_ms"] * 1000, "duration": dur}
+                ttrack["segments"].append(ts)
+        c["tracks"].append(ttrack)
+        print(f"  [caption] chế độ = {caption_mode}")
+    else:
+        print("  [caption] Không có lời thoại nào trong cột VO — bỏ qua caption.")
+
+    print(f"\nTổng: {len(vtrack['segments'])} cảnh, {len(caps)} caption, video dài {V/1e6:.2f}s")
+    ket_qua = {"scenes": len(canh_list), "captions": len(caps), "duration_s": round(V / 1e6, 1)}
+    if not do_write:
+        print("[DRY-RUN] Chưa ghi. Truyền do_write=True để tạo draft thật.")
+        return ket_qua
+
+    out_dir = DRAFTS_ROOT / out_name
+    if out_dir.exists():
+        raise RuntimeError(f"Draft đã tồn tại: {out_dir}")
+    out_dir.mkdir(parents=True)
+    with open(out_dir / "draft_content.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(c, **_DUMP))
+    meta = copy.deepcopy(json.loads((_duong_dan_mau(DONOR_VIDEO) / "draft_meta_info.json")
+                                    .read_text(encoding="utf-8", errors="replace")))
+    meta["draft_id"] = uid()
+    meta["draft_name"] = out_name
+    meta["draft_fold_path"] = str(out_dir).replace("\\", "/")
+    meta["draft_materials"] = []
+    meta["tm_duration"] = V
+    with open(out_dir / "draft_meta_info.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(meta, **_DUMP))
+    print(f"\n✅ Đã tạo draft: {out_dir}")
+    print("   Mở CapCut để kiểm tra (draft sẽ được tự nhận vào danh sách).")
+    ket_qua["draft"] = out_name
+    return ket_qua
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("folder")
+    ap.add_argument("folder", nargs="?", help="thư mục chứa clip+voice (bỏ qua nếu dùng --eqgym-csv)")
     ap.add_argument("--name", required=True)
     ap.add_argument("--model", default="small", help="whisper model: tiny/base/small/medium")
     ap.add_argument("--caption", default="template", choices=["template", "plain"],
@@ -559,11 +880,23 @@ def main():
     ap.add_argument("--cap-words", type=int, default=5, help="số chữ tối đa mỗi cụm caption")
     ap.add_argument("--script", default=None, help="file .txt kịch bản (mặc định tự tìm .txt trong folder)")
     ap.add_argument("--keep-clip-audio", action="store_true", help="GIỮ tiếng gốc của clip (mặc định tắt)")
+    # EQ Gym AI Editor: dựng theo kịch bản CSV thay vì suy từ thư mục.
+    ap.add_argument("--eqgym-csv", default=None, help="file CSV kịch bản (cột Scene,Duration,VO)")
+    ap.add_argument("--eqgym-source", default=None, help="thư mục chứa video/ảnh đã tạo, tên khớp mã Scene")
+    ap.add_argument("--eqgym-voice", default=None, help="file voiceover DUY NHẤT cho toàn bộ video")
     ap.add_argument("--yes", action="store_true")
     a = ap.parse_args()
     try:
-        build(a.folder, a.name, a.model, a.yes, a.caption, a.cap_chars, a.cap_words,
-              a.script, not a.keep_clip_audio)
+        if a.eqgym_csv:
+            if not (a.eqgym_source and a.eqgym_voice):
+                sys.exit("--eqgym-csv cần đi kèm --eqgym-source và --eqgym-voice")
+            build_from_csv(a.eqgym_csv, a.eqgym_source, a.eqgym_voice, a.name, a.yes,
+                           a.caption, a.cap_chars, a.cap_words)
+        else:
+            if not a.folder:
+                sys.exit("Thiếu tham số folder (hoặc dùng --eqgym-csv cho quy trình EQ Gym)")
+            build(a.folder, a.name, a.model, a.yes, a.caption, a.cap_chars, a.cap_words,
+                  a.script, not a.keep_clip_audio)
     except RuntimeError as e:
         sys.exit(str(e))
 
