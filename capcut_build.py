@@ -557,6 +557,13 @@ def build(folder, out_name, model_name, do_write, caption_mode="template",
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 CSV_COT_BAT_BUOC = {"Scene", "Duration", "VO"}
 
+# Trần kéo giãn tốc độ clip. Người dùng thật báo: dưới 0,9 là video GIẬT LAG khi
+# phát (bản trước có clip tụt xuống 0,378 vì giọng đọc dài gấp rưỡi clip). Chậm
+# quá thì CapCut phải chèn thêm khung hình mà không có gì để chèn. Chạm trần thì
+# GIỮ KHUNG CUỐI cho hết ô thời gian — đứng hình vẫn hơn giật hình.
+TOC_CHAM_NHAT = 0.9
+TOC_NHANH_NHAT = 1.1      # nhanh hơn nữa thì cắt bớt đuôi clip, đừng tua vội
+
 
 def doc_kich_ban_csv(csv_path) -> list:
     """Đọc CSV kịch bản. Cột Prompt/Img*Name/Img*Data (nếu có) là dữ liệu cho bước
@@ -796,6 +803,30 @@ def _khop_canh_vao_voice(canh_list, words) -> dict:
     return da
 
 
+def _khung_cuoi(clip: Path, giay: float, cache_dir: Path) -> Path:
+    """Trích một KHUNG HÌNH của clip tại giây `giay` ra PNG, để giữ đứng hình.
+
+    Dùng khi giọng đọc dài hơn clip tới mức kéo giãn sẽ vượt trần TOC_CHAM_NHAT.
+    Giữ khung cuối trông tự nhiên hơn hẳn video giật, và các clip AI-gen thường
+    kết bằng một tư thế đứng yên nên gần như không nhận ra chỗ nối."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out = cache_dir / f"{clip.stem}_khung_{giay:.2f}.png"
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    # Tua NGƯỢC TỪ CUỐI (-sseof) chứ không tua xuôi (-ss): tua xuôi tới sát khung
+    # cuối thì rơi ra sau khung hình cuối cùng và ffmpeg không xuất được gì —
+    # "Output file is empty" (đo thật trên clip 2s/10fps, tua tới 1,95s ra rỗng).
+    # Luôn lùi thêm ít nhất 0,1s cho chắc chắn còn khung để lấy.
+    dur = probe(clip)["duration_us"] / 1e6
+    lech = min(-0.1, giay - dur)
+    subprocess.run(["ffmpeg", "-y", "-sseof", f"{lech:.3f}", "-i", str(clip),
+                    "-update", "1", "-frames:v", "1", str(out)],
+                   check=True, capture_output=True)
+    if not out.exists() or out.stat().st_size == 0:
+        raise RuntimeError(f"Không trích được khung hình từ {clip.name} (giây {giay:.2f})")
+    return out
+
+
 def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                     caption_mode="template", cap_chars=18, cap_words=5,
                     them_caption=False, chuyen_canh=False, dong_bo_voice=True,
@@ -849,12 +880,6 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     print(f"Voice    : {voice_path.name}")
 
     cache_dir = voice_path.parent / ".eqgym_cache"
-    for c in canh_list:
-        p = nguon[c["scene"]]
-        if p.suffix.lower() in IMAGE_EXTS:
-            print(f"  [{c['scene']}] ảnh -> clip tĩnh {c['duration_s']:.1f}s...")
-            nguon[c["scene"]] = _anh_thanh_clip_tinh(p, c["duration_s"], cache_dir)
-
     vinfo = probe(voice_path)
     V = vinfo["duration_us"]
 
@@ -900,48 +925,36 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                         co.sort(key=lambda x: vung[x["scene"]][0])
                         muc.append(("cum", co))
 
-            # SLIDE ĂN ĐÚNG ĐOẠN TIẾNG NẰM GIỮA HAI CỤM. Đo trên voice.mp3 thật:
-            # giọng CÓ đọc cả 4 tiêu đề slide ("Tại sao là EQ Gym?", "Lời kết"...),
-            # dù bảng lưu ý ghi slide "im lặng". Nếu cứ để slide im theo bảng thì
-            # phải vứt ~20 giây tiếng đó đi, và chỗ nối nghe cụt ngang. Cho slide
-            # ôm đúng đoạn tiếng của nó thì không mất chữ nào, tiếng chạy liền một
-            # mạch, và slide vẫn hiện đúng lúc tiêu đề được đọc.
-            t = 0.0
-            for k, (loai, noi_dung) in enumerate(muc):
+            # MỐC BẮT ĐẦU của từng dòng, tính THẲNG TRÊN TRỤC THỜI GIAN CỦA FILE
+            # VOICE — timeline chạy 1:1 với giọng đọc, không cộng dồn thủ công nên
+            # không có chỗ nào tích luỹ sai số.
+            #   · clip  -> mốc = lúc câu của nó bắt đầu được đọc
+            #   · slide -> mốc = lúc cụm clip trước đó đọc xong; nó ôm trọn khoảng
+            #     tiếng ở giữa. Đo trên voice.mp3 thật: giọng CÓ đọc cả 4 tiêu đề
+            #     slide ("Tại sao là e q Gym?", "Lời kết"...) dù bảng lưu ý ghi
+            #     slide "im lặng" — để im theo bảng là phải vứt ~20 giây tiếng đó.
+            moc = []
+            for k, (loai, nd) in enumerate(muc):
                 if loai == "slide":
                     truoc = next((m for m in reversed(muc[:k]) if m[0] == "cum"), None)
-                    sau = next((m for m in muc[k + 1:] if m[0] == "cum"), None)
-                    if truoc and sau:
-                        dai = max(0.2, vung[sau[1][0]["scene"]][0]
-                                  - max(vung[x["scene"]][1] for x in truoc[1]))
-                    else:
-                        dai = noi_dung["duration_s"]   # slide đầu/cuối: theo bảng
-                    lich.append((noi_dung, t, t + dai, 1.0))
-                    t += dai
-                    continue
-                co = noi_dung
-                vs = vung[co[0]["scene"]][0]
-                ve = max(vung[x["scene"]][1] for x in co)
-                audio_segs.append((vs, ve, t))
-                for j, x in enumerate(co):
-                    b = vung[x["scene"]][0]
-                    ke = vung[co[j + 1]["scene"]][0] if j + 1 < len(co) else ve
-                    lich.append((x, t + (b - vs), t + (ke - vs), vung[x["scene"]][2]))
-                    if vung[x["scene"]][2] < 0.5:
-                        canh_yeu.append(x["scene"])
-                t += (ve - vs)
-
-            # Slide ôm trọn khoảng tiếng giữa hai cụm nên timeline giờ chạy ĐÚNG
-            # NHỊP với file voice (cùng một độ lệch cho mọi đoạn). Khi đó chỉ cần
-            # MỘT đoạn tiếng trải suốt: giọng chạy liền mạch, không mối nối nào
-            # nghe cụt, và không mất câu nào — kể cả 4 tiêu đề slide mà giọng có
-            # đọc (đo trên voice.mp3 thật) nhưng bảng lưu ý lại ghi là "im lặng".
-            lech = {round(tl - vs, 2) for vs, _, tl in audio_segs}
-            if len(lech) == 1:
-                d0 = lech.pop()
-                audio_segs = [(0.0, V / 1e6, max(0.0, d0))]
-                if d0 < 0:      # voice bắt đầu trước mốc 0 của timeline -> cắt bớt đầu
-                    audio_segs = [(-d0, V / 1e6, 0.0)]
+                    moc.append((nd, max(vung[x["scene"]][1] for x in truoc[1]) if truoc else 0.0, 1.0))
+                else:
+                    for x in nd:
+                        moc.append((x, vung[x["scene"]][0], vung[x["scene"]][2]))
+            if moc:
+                # Dòng đầu kéo về mốc 0 để phủ luôn khoảng lặng đầu file voice,
+                # nếu không thì đoạn đầu video trống hình.
+                moc[0] = (moc[0][0], 0.0, moc[0][2])
+            for j, (nd, s, ty) in enumerate(moc):
+                e = moc[j + 1][1] if j + 1 < len(moc) else V / 1e6
+                lich.append((nd, s, max(s + 0.2, e), ty))
+                # CẮT TIẾNG THEO TỪNG DÒNG (người dùng yêu cầu): mỗi cảnh một đoạn
+                # audio riêng thay vì một khối liền. Cùng trỏ vào một file mp3 nên
+                # không phải cắt file, không giảm chất lượng — nhưng trong CapCut
+                # là các mẩu tách rời, kéo/né từng cảnh được khi cần chỉnh tay.
+                audio_segs.append((s, max(s + 0.2, e), s))
+                if ty < 0.5:
+                    canh_yeu.append(nd["scene"])
 
             if canh_yeu:
                 print(f"  [đồng bộ] ⚠️ khớp yếu (<50% chữ), vị trí có thể sai: {', '.join(canh_yeu)}")
@@ -993,17 +1006,16 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     # ---- VIDEO TRACK ----
     vtrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in vtrack_src.items()}
     vtrack["id"] = uid()
-    for i, (cnh, sec_bd, sec_kt, ty_le) in enumerate(lich):
-        clip = nguon[cnh["scene"]]
+
+    def them_hinh(clip: Path, nhan: str, cat_dau: int, src_dur: int,
+                  o_bd: int, o_dai: int, speed: float, thu_tu: int):
         ci = probe(clip)
-        o_bd = int(round(sec_bd * 1_000_000))
-        o_dai = max(200_000, int(round((sec_kt - sec_bd) * 1_000_000)))
         seg = copy.deepcopy(seg_tpl)
         seg["id"] = uid()
         vm = copy.deepcopy(prim_mat)
         vm["id"] = uid()
         vm["path"] = str(clip).replace("\\", "/")
-        vm["material_name"] = f"{cnh['scene']} — {clip.stem}"
+        vm["material_name"] = nhan
         vm["duration"] = ci["duration_us"]
         if ci["width"]:
             vm["width"], vm["height"] = ci["width"], ci["height"]
@@ -1016,34 +1028,19 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                 continue
             nm = copy.deepcopy(m)
             nm["id"] = uid()
-            add_mat(arr, nm)
-            newrefs.append((arr, nm))
-
-        # Cắt bỏ khoảng LẶNG ĐẦU của clip rồi mới kéo giãn: phần còn lại (từ lúc
-        # miệng bắt đầu mấp máy) trải đúng vào ô thời gian mà giọng thật đang đọc
-        # cảnh này -> khẩu hình bám giọng. Xem _diem_noi() cho số đo thật.
-        cat_dau = 0
-        if dong_bo_voice and ci["has_audio"] and cnh.get("loai", "render") == "render":
-            noi_bd, _ = _diem_noi(clip)
-            cat_dau = int(noi_bd * 1_000_000)
-        con_lai = max(1, ci["duration_us"] - cat_dau)
-        src_dur = min(con_lai, o_dai)          # mặc định phát tốc độ thường
-        speed = 1.0
-        if con_lai < o_dai:
-            # Clip ngắn hơn ô thời gian -> chậm lại cho vừa, thay vì để hở hình đen.
-            src_dur, speed = con_lai, round(con_lai / o_dai, 6)
-        seg["source_timerange"] = {"start": cat_dau, "duration": src_dur}
-        seg["target_timerange"] = {"start": o_bd, "duration": o_dai}
-        seg["speed"] = speed
-        seg["volume"] = 0.0            # tắt tiếng AI của clip — chỉ dùng voiceover thật
-        seg["last_nonzero_volume"] = 0.0
-        for arr, nm in newrefs:
             if arr == "speeds":
                 nm["speed"] = speed
                 if "curve_speed" in nm:
                     nm["curve_speed"] = None
+            add_mat(arr, nm)
+            newrefs.append((arr, nm))
+        seg["source_timerange"] = {"start": cat_dau, "duration": src_dur}
+        seg["target_timerange"] = {"start": o_bd, "duration": o_dai}
+        seg["speed"] = speed
+        seg["volume"] = 0.0        # tắt tiếng AI của clip — chỉ dùng voiceover thật
+        seg["last_nonzero_volume"] = 0.0
         ref_ids = [nm["id"] for _, nm in newrefs]
-        if chuyen_canh and i > 0:
+        if chuyen_canh and thu_tu > 0:
             # MẶC ĐỊNH TẮT. Donor chỉ có MỘT hiệu ứng (Slide Zoom) nên bật lên là 22
             # lần chuyển cảnh y hệt nhau — nhìn rất máy móc (người dùng thật báo).
             # Tệ hơn: transition trong CapCut ĂN thời lượng của hai segment kề nó,
@@ -1053,9 +1050,83 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             add_mat("transitions", tr)
             ref_ids.insert(2, tr["id"])
         seg["extra_material_refs"] = ref_ids
-        seg["render_index"] = i
+        seg["render_index"] = thu_tu
         vtrack["segments"].append(seg)
+
+    n_giu, n_ep = 0, 0
+    for i, (cnh, sec_bd, sec_kt, ty_le) in enumerate(lich):
+        la_slide = cnh.get("loai", "render") == "slide"
+        o_bd = int(round(sec_bd * 1_000_000))
+        o_dai = max(200_000, int(round((sec_kt - sec_bd) * 1_000_000)))
+        goc = nguon[cnh["scene"]]
+
+        if goc.suffix.lower() in IMAGE_EXTS:
+            # Ảnh (slide) — dựng clip tĩnh đúng bằng ô thời gian THẬT vừa tính từ
+            # giọng đọc, không phải con số 3 giây trong bảng. Ảnh đứng yên nên
+            # không có chuyện giật hình, cứ để tốc độ thường.
+            clip = _anh_thanh_clip_tinh(goc, o_dai / 1e6, cache_dir)
+            ci = probe(clip)
+            them_hinh(clip, f"{cnh['scene']} — {goc.stem}", 0,
+                      min(ci["duration_us"], o_dai), o_bd, o_dai, 1.0, i)
+            continue
+
+        ci = probe(goc)
+        # Cắt bỏ khoảng LẶNG ĐẦU của clip rồi mới kéo giãn: phần còn lại (từ lúc
+        # miệng bắt đầu mấp máy) trải đúng vào ô thời gian mà giọng thật đang đọc
+        # cảnh này -> khẩu hình bám giọng. Xem _diem_noi() cho số đo thật.
+        cat_dau = 0
+        if dong_bo_voice and ci["has_audio"] and not la_slide:
+            noi_bd, _ = _diem_noi(goc)
+            cat_dau = int(noi_bd * 1_000_000)
+        con_lai = max(1, ci["duration_us"] - cat_dau)
+        speed = con_lai / o_dai                 # tốc độ để clip trải vừa đúng ô
+
+        if speed < TOC_CHAM_NHAT:
+            # Giọng đọc dài hơn clip nhiều -> kéo giãn quá tay là video GIẬT LAG
+            # (người dùng thật báo, có clip xuống tới 0,38). Chỉ chậm tới mức trần
+            # rồi GIỮ KHUNG CUỐI cho hết ô — đứng hình vẫn hơn giật hình.
+            speed, src_dur = TOC_CHAM_NHAT, con_lai
+            n_ep += 1
+        elif speed > TOC_NHANH_NHAT:
+            # Clip dài hơn ô -> cắt bớt đuôi thay vì tua nhanh quá đà.
+            speed, src_dur = TOC_NHANH_NHAT, int(o_dai * TOC_NHANH_NHAT)
+        else:
+            src_dur = con_lai
+        phu = int(src_dur / speed)              # ô thời gian mà phần hình phủ được
+        phu = min(phu, o_dai)
+        them_hinh(goc, f"{cnh['scene']} — {goc.stem}", cat_dau, src_dur,
+                  o_bd, phu, round(speed, 6), i)
+
+        con_ho = o_dai - phu
+        if con_ho > 40_000:                     # >0,04s mới đáng bù, dưới nữa là làm tròn
+            png = _khung_cuoi(goc, (cat_dau + src_dur) / 1e6, cache_dir)
+            giu = _anh_thanh_clip_tinh(png, con_ho / 1e6, cache_dir)
+            gi = probe(giu)
+            them_hinh(giu, f"{cnh['scene']} — giữ khung cuối", 0,
+                      min(gi["duration_us"], con_ho), o_bd + phu, con_ho, 1.0, i)
+            n_giu += 1
+    if n_ep:
+        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {TOC_CHAM_NHAT} "
+              f"-> giữ khung cuối cho {n_giu} chỗ (đứng hình thay vì giật hình)")
     c["tracks"].append(vtrack)
+
+    # BẢNG ĐỘ DÀI ĐO ĐƯỢC — thứ đáng giá nhất để lần sau khỏi phải đứng hình:
+    # clip AI đang ngắn hơn giọng đọc thật, mà cột Duration trong kịch bản lại là
+    # ước lượng chứ không phải số đo. Ghi ra đây để dựng lại clip cho đúng nhịp.
+    if dong_bo_voice and lich:
+        bao = voice_path.parent / f"do_duoc_{voice_path.stem}.csv"
+        try:
+            with open(bao, "w", encoding="utf-8-sig", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["Scene", "Duration_ke_hoach_s", "Duration_do_duoc_s",
+                            "Chenh_lech_s", "Bat_dau_s"])
+                for cnh, s, e, _ in lich:
+                    w.writerow([cnh["scene"], f"{cnh['duration_s']:.1f}", f"{e - s:.2f}",
+                                f"{(e - s) - cnh['duration_s']:+.2f}", f"{s:.2f}"])
+            print(f"  [đo] độ dài THẬT từng cảnh -> {bao.name} "
+                  f"(dùng số này dựng lại clip thì hết phải đứng hình)")
+        except OSError as e:
+            print(f"  [đo] không ghi được bảng đo: {e}")
 
     # ---- AUDIO TRACK — một voice chung cho toàn bộ timeline ----
     atrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in atrack_src.items()}
@@ -1151,9 +1222,10 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     het = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"])
               for s in vtrack["segments"])
     c["duration"] = het
-    print(f"\nTổng: {len(vtrack['segments'])}/{len(canh_list)} dòng lên hình, "
+    print(f"\nTổng: {len(lich)}/{len(canh_list)} dòng lên hình "
+          f"({len(vtrack['segments'])} segment kể cả chỗ giữ khung), "
           f"{len(caps)} caption, video dài {het/1e6:.2f}s (voice {V/1e6:.2f}s)")
-    ket_qua = {"scenes": len(vtrack["segments"]), "scenes_csv": len(canh_list),
+    ket_qua = {"scenes": len(lich), "scenes_csv": len(canh_list),
                "captions": len(caps), "duration_s": round(het / 1e6, 1),
                "bo_qua": [c["scene"] for c in canh_list
                           if c["scene"] not in {x[0]["scene"] for x in lich}],
