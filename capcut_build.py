@@ -628,13 +628,98 @@ def _anh_thanh_clip_tinh(img_path: Path, dur_s: float, cache_dir: Path) -> Path:
     return out
 
 
-def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
-                    caption_mode="template", cap_chars=18, cap_words=5) -> dict:
-    """Dựng 1 draft CapCut ĐÚNG theo kịch bản CSV (quy trình EQ Gym AI Editor).
+def _diem_noi(path) -> tuple:
+    """(giây bắt đầu nói, giây kết thúc nói) trong một clip — đo bằng ffmpeg silencedetect.
 
-    Khác build(): timing từng cảnh lấy từ cột Duration (không chia đều theo voice),
-    caption lấy thẳng từ cột VO (không ASR lại — kịch bản đã đúng sẵn), và MỘT file
-    voice DUY NHẤT chạy xuyên suốt toàn bộ timeline làm audio track.
+    VÌ SAO CẦN: clip AI-gen đo được có 0,17-0,70 giây LẶNG ở đầu trước khi miệng bắt
+    đầu mấp máy (đo trên 5 clip thật của EQ Gym). Nếu cứ đặt cả clip vào đúng ô thời
+    gian của giọng đọc, phần lặng đầu đó đẩy toàn bộ khẩu hình trễ đi ngần ấy — nửa
+    giây lệch môi là nhìn ra ngay. Cắt bỏ lặng đầu rồi mới kéo giãn thì miệng bám
+    đúng chỗ giọng thật bắt đầu."""
+    out = subprocess.run(
+        ["ffmpeg", "-i", str(path), "-af", "silencedetect=noise=-35dB:d=0.15",
+         "-f", "null", "-"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
+    starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", out)]
+    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", out)]
+    dur = probe(path)["duration_us"] / 1e6
+    # Lặng bắt đầu ngay từ giây 0 -> clip mở đầu bằng khoảng lặng, tiếng nói bắt đầu
+    # ở chỗ khoảng lặng đó kết thúc. Ngược lại thì nói ngay từ đầu.
+    bat_dau = ends[0] if (starts and ends and starts[0] <= 0.05) else 0.0
+    # Nhiều silence_start hơn silence_end -> khoảng lặng cuối chạy tới hết clip.
+    ket_thuc = starts[-1] if len(starts) > len(ends) else dur
+    if ket_thuc - bat_dau < 0.3:        # đo hỏng (clip lặng hết) -> dùng cả clip
+        return 0.0, dur
+    return bat_dau, ket_thuc
+
+
+def _khop_canh_vao_voice(canh_list, words) -> dict:
+    """Tìm MỖI cảnh nằm ở đâu trong file voice, dựa vào LỜI (cột VO) — trả về
+    {chỉ số cảnh: (chữ_đầu, chữ_cuối, tỷ_lệ_khớp)}.
+
+    KHÔNG giả định voice đọc đúng thứ tự CSV. Đo trên dữ liệu thật (EQ Gym BAI00):
+    voice đọc C01..C15 rồi NHẢY sang C18,C19,C20,C21 rồi mới quay lại C16,C17 —
+    kịch bản CSV đã được xếp lại sau khi thu tiếng. Cứ ghép tuần tự là toàn bộ nửa
+    sau lệch hẳn.
+
+    Cách làm — GIÀNH CHỖ THEO ĐỘ TIN CẬY: mỗi vòng, chấm điểm mọi cảnh chưa có chỗ,
+    cho cảnh khớp chắc nhất giành trước rồi CHE vùng đó khỏi các vòng sau. Cần thế
+    vì có cặp cảnh gần trùng lời (C18 và C23 cùng kết bằng 'để làm chủ bản thân,
+    kết nối người khác và sống đúng với điều quan trọng nhất') — chấm độc lập thì
+    cả hai cùng đòi một chỗ, cảnh khớp yếu hơn cướp mất chỗ của cảnh khớp chắc."""
+    asr = [re.sub(r"[^\w]", "", w["w"].lower()) for w in words]
+    che = [False] * len(asr)
+    chua, da = list(range(len(canh_list))), {}
+
+    def cham(vo_text, masked):
+        sw = [x for x in (re.sub(r"[^\w]", "", t.lower()) for t in vo_text.split()) if x]
+        if not sw:
+            return None
+        blocks = [b for b in difflib.SequenceMatcher(None, masked, sw, autojunk=False)
+                  .get_matching_blocks() if b.size >= 3]
+        if not blocks:
+            return None
+        # Gom khối khớp liền kề thành CỤM, lấy cụm dày nhất — một chữ phổ biến
+        # ('của', 'là') khớp lạc ở đầu kia file sẽ kéo vùng ra dài vô nghĩa.
+        cum, cur = [], [blocks[0]]
+        for b in blocks[1:]:
+            truoc = cur[-1]
+            if b.a - (truoc.a + truoc.size) <= 25:
+                cur.append(b)
+            else:
+                cum.append(cur)
+                cur = [b]
+        cum.append(cur)
+        best = max(cum, key=lambda g: sum(x.size for x in g))
+        return best[0].a, best[-1].a + best[-1].size, sum(x.size for x in best) / len(sw)
+
+    while chua:
+        masked = [f"\x00{i}" if che[i] else w for i, w in enumerate(asr)]
+        ung = [(r[2], i, r) for i in chua for r in [cham(canh_list[i]["vo"], masked)] if r]
+        if not ung:
+            break
+        _, i, (lo, hi, ty) = max(ung, key=lambda x: x[0])
+        da[i] = (lo, hi, ty)
+        for k in range(lo, min(hi, len(che))):
+            che[k] = True
+        chua.remove(i)
+    return da
+
+
+def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
+                    caption_mode="template", cap_chars=18, cap_words=5,
+                    them_caption=False, chuyen_canh=False, dong_bo_voice=True,
+                    model_asr="small") -> dict:
+    """Dựng 1 draft CapCut từ kịch bản CSV (quy trình EQ Gym AI Editor).
+
+    `dong_bo_voice=True` (mặc định) — GIỌNG ĐỌC LÀ GỐC THỜI GIAN, không phải cột
+    Duration: bóc lời file voice, khớp lời từng cảnh vào đó để biết cảnh đó được
+    đọc ở giây nào, rồi kéo giãn clip cho khẩu hình bám đúng chỗ. Cột Duration chỉ
+    còn là ước lượng ban đầu cho bước tạo video bằng AI — đo trên dữ liệu thật thấy
+    giọng đọc chậm hơn ước lượng đó 20-40%, và thứ tự đọc còn khác cả thứ tự CSV.
+
+    `dong_bo_voice=False` — xếp thẳng theo cột Duration như bản đầu (nhanh, không
+    cần bóc lời), chấp nhận hình và tiếng lệch nhau.
 
     Thiếu nguồn cho scene nào -> DỪNG NGAY, liệt kê đủ tên scene thiếu MỘT LƯỢT
     (luật cứng #2: không hỏng im lặng) — không dựng draft cụt cảnh rồi để người
@@ -676,6 +761,45 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     vinfo = probe(voice_path)
     V = vinfo["duration_us"]
 
+    # ---- ĐỒNG BỘ THEO GIỌNG ĐỌC: tìm mỗi cảnh được đọc ở giây nào ----
+    # `lich` = danh sách cảnh ĐÃ SẮP THEO THỨ TỰ TRÊN TIMELINE, mỗi phần tử là
+    # (cảnh, giây_bắt_đầu, giây_kết_thúc_ô, tỷ_lệ_khớp_lời).
+    lich, canh_yeu = [], []
+    if dong_bo_voice:
+        print(f"  [đồng bộ] bóc lời voice bằng model '{model_asr}' để lấy mốc từng chữ...")
+        caps = transcribe(voice_path, model_asr)
+        words = [w for cp in caps for w in cp["words"] if w["w"].strip()]
+        if not words:
+            print("  [đồng bộ] ⚠️ không bóc được lời nào — lùi về xếp theo cột Duration.")
+            dong_bo_voice = False
+        else:
+            da = _khop_canh_vao_voice(canh_list, words)
+            tim_thay = sorted(((words[lo]["s"] / 1000, i, ty) for i, (lo, hi, ty) in da.items()),
+                              key=lambda x: x[0])
+            mat = [canh_list[i]["scene"] for i in range(len(canh_list)) if i not in da]
+            for pos, (sec, i, ty) in enumerate(tim_thay):
+                ke_tiep = tim_thay[pos + 1][0] if pos + 1 < len(tim_thay) else V / 1e6
+                lich.append((canh_list[i], sec, ke_tiep, ty))
+                if ty < 0.5:
+                    canh_yeu.append(canh_list[i]["scene"])
+            if mat:
+                # Không khớp được lời -> KHÔNG bịa chỗ. Báo tên cảnh để người dùng
+                # tự đối chiếu; cảnh đó bị bỏ khỏi timeline, nói rõ chứ không lặng lẽ.
+                print(f"  [đồng bộ] ⚠️ {len(mat)} cảnh KHÔNG tìm thấy lời trong voice, "
+                      f"bị bỏ khỏi timeline: {', '.join(mat)}")
+            if canh_yeu:
+                print(f"  [đồng bộ] ⚠️ khớp yếu (<50% chữ), vị trí có thể sai: {', '.join(canh_yeu)}")
+            thu_tu = [x[0]["scene"] for x in lich]
+            if thu_tu != [c["scene"] for c in canh_list if c["scene"] in thu_tu]:
+                print(f"  [đồng bộ] ⚠️ VOICE ĐỌC KHÁC THỨ TỰ CSV — xếp hình theo voice: "
+                      f"{' '.join(thu_tu)}")
+            print(f"  [đồng bộ] khớp {len(lich)}/{len(canh_list)} cảnh vào giọng đọc")
+    if not dong_bo_voice:
+        t = 0.0
+        for cnh in canh_list:
+            lich.append((cnh, t, t + cnh["duration_s"], 1.0))
+            t += cnh["duration_s"]
+
     # ---- donor (chỉ 282new — xem giải thích ở kiem_tra_draft_mau phía trên) ----
     dv = load_draft(DONOR_VIDEO)
     dt = dv
@@ -706,14 +830,14 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     def add_mat(arr, obj):
         c["materials"].setdefault(arr, []).append(obj)
 
-    # ---- VIDEO TRACK — timing ĐÚNG Duration từng cảnh, không chia đều ----
+    # ---- VIDEO TRACK ----
     vtrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in vtrack_src.items()}
     vtrack["id"] = uid()
-    start = 0
-    for i, cnh in enumerate(canh_list):
+    for i, (cnh, sec_bd, sec_kt, ty_le) in enumerate(lich):
         clip = nguon[cnh["scene"]]
         ci = probe(clip)
-        slice_us = int(round(cnh["duration_s"] * 1_000_000))
+        o_bd = int(round(sec_bd * 1_000_000))
+        o_dai = max(200_000, int(round((sec_kt - sec_bd) * 1_000_000)))
         seg = copy.deepcopy(seg_tpl)
         seg["id"] = uid()
         vm = copy.deepcopy(prim_mat)
@@ -734,17 +858,24 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             nm["id"] = uid()
             add_mat(arr, nm)
             newrefs.append((arr, nm))
-        native = ci["duration_us"]
-        if native >= slice_us:
-            src_dur = slice_us; speed = 1.0
-        else:
-            # Clip AI-gen ngắn hơn Duration khai báo trong CSV — kéo giãn tốc độ để
-            # lấp đủ chỗ, thay vì để hở khoảng đen giữa hai cảnh trên timeline.
-            src_dur = native; speed = round(native / slice_us, 6) if slice_us else 1.0
-        seg["source_timerange"] = {"start": 0, "duration": src_dur}
-        seg["target_timerange"] = {"start": start, "duration": slice_us}
+
+        # Cắt bỏ khoảng LẶNG ĐẦU của clip rồi mới kéo giãn: phần còn lại (từ lúc
+        # miệng bắt đầu mấp máy) trải đúng vào ô thời gian mà giọng thật đang đọc
+        # cảnh này -> khẩu hình bám giọng. Xem _diem_noi() cho số đo thật.
+        cat_dau = 0
+        if dong_bo_voice and ci["has_audio"]:
+            noi_bd, _ = _diem_noi(clip)
+            cat_dau = int(noi_bd * 1_000_000)
+        con_lai = max(1, ci["duration_us"] - cat_dau)
+        src_dur = min(con_lai, o_dai)          # mặc định phát tốc độ thường
+        speed = 1.0
+        if con_lai < o_dai:
+            # Clip ngắn hơn ô thời gian -> chậm lại cho vừa, thay vì để hở hình đen.
+            src_dur, speed = con_lai, round(con_lai / o_dai, 6)
+        seg["source_timerange"] = {"start": cat_dau, "duration": src_dur}
+        seg["target_timerange"] = {"start": o_bd, "duration": o_dai}
         seg["speed"] = speed
-        seg["volume"] = 0.0            # tắt tiếng gốc clip — chỉ dùng voiceover chung
+        seg["volume"] = 0.0            # tắt tiếng AI của clip — chỉ dùng voiceover thật
         seg["last_nonzero_volume"] = 0.0
         for arr, nm in newrefs:
             if arr == "speeds":
@@ -752,7 +883,11 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                 if "curve_speed" in nm:
                     nm["curve_speed"] = None
         ref_ids = [nm["id"] for _, nm in newrefs]
-        if i > 0:
+        if chuyen_canh and i > 0:
+            # MẶC ĐỊNH TẮT. Donor chỉ có MỘT hiệu ứng (Slide Zoom) nên bật lên là 22
+            # lần chuyển cảnh y hệt nhau — nhìn rất máy móc (người dùng thật báo).
+            # Tệ hơn: transition trong CapCut ĂN thời lượng của hai segment kề nó,
+            # làm xê dịch đúng cái mốc mà cả bước đồng bộ khẩu hình vừa canh xong.
             tr = copy.deepcopy(trans_tpl)
             tr["id"] = uid()
             add_mat("transitions", tr)
@@ -760,16 +895,7 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         seg["extra_material_refs"] = ref_ids
         seg["render_index"] = i
         vtrack["segments"].append(seg)
-        start += slice_us
     c["tracks"].append(vtrack)
-    # Tổng Duration khai báo trong CSV có thể lệch với độ dài voice thật (VD kịch
-    # bản ước lượng 8-10s/cảnh nhưng giọng đọc thật nhanh/chậm hơn) — KHÔNG tự co
-    # giãn để che lệch: báo rõ số giây lệch, người dùng tự quyết sửa CSV hay thu
-    # lại voice, giấu đi là hỏng im lặng.
-    if abs(start - V) > 500_000:
-        print(f"⚠️  Tổng Duration các cảnh ({start/1e6:.1f}s) lệch với voice thật "
-              f"({V/1e6:.1f}s) — {'thiếu' if start < V else 'thừa'} khoảng "
-              f"{abs(start-V)/1e6:.1f}s so với giọng đọc.")
 
     # ---- AUDIO TRACK — một voice chung cho toàn bộ timeline ----
     atrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in atrack_src.items()}
@@ -779,6 +905,18 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     am["path"] = str(voice_path).replace("\\", "/")
     am["name"] = voice_path.name
     am["duration"] = V
+    # ĐỊA PHƯƠNG HOÁ — donor 282new lấy audio từ kho NHẠC ONLINE của CapCut. Giữ
+    # nguyên music_id/category thì CapCut coi đây vẫn là bài nhạc đó, tự phân giải
+    # lại về file cache của nó và ĐÈ MẤT đường dẫn voice thật (người dùng báo:
+    # "import sai voice"). Cùng một lỗi shorts/build_short_draft.py đã vá cho SFX.
+    am["type"] = "extract_music"
+    am["category_name"] = "local"
+    am["music_id"] = uid()
+    for k in ("category_id", "request_id", "resource_id", "effect_id",
+              "local_material_id", "remote_url", "intensifies_path"):
+        if k in am:
+            am[k] = ""
+    am["source_platform"] = 0
     add_mat("audios", am)
     aseg = copy.deepcopy(aseg_tpl)
     aseg["id"] = uid()
@@ -786,19 +924,24 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     aseg["extra_material_refs"] = []
     aseg["source_timerange"] = {"start": 0, "duration": V}
     aseg["target_timerange"] = {"start": 0, "duration": V}
+    # Donor là NHẠC NỀN nên âm lượng chỉ ~26% — để nguyên thì giọng đọc bé xíu.
+    # Đây là tiếng chính của video, phải 100%.
+    aseg["volume"] = 1.0
+    aseg["last_nonzero_volume"] = 1.0
     atrack["segments"].append(aseg)
     c["tracks"].append(atrack)
 
-    # ---- CAPTION TRACK — lấy THẲNG từ cột VO, mốc theo Duration tích luỹ ----
-    # Không word-level timing thật (không ASR) -> mỗi cảnh là MỘT khối caption
-    # nguyên câu, hiện suốt cảnh đó; rechunk() vẫn cắt bớt nếu câu quá dài.
+    # ---- CAPTION TRACK — MẶC ĐỊNH TẮT ----
+    # Video EQ Gym đã có đồ hoạ/nhãn chữ do AI vẽ sẵn trong hình (xem cột Prompt:
+    # "NO SUBTITLES (critical)"), thêm caption nữa là chữ chồng chữ. Bật lại bằng
+    # them_caption=True nếu quy trình khác cần.
     caps = []
-    t0 = 0
-    for cnh in canh_list:
-        dur_ms = int(round(cnh["duration_s"] * 1000))
-        if cnh["vo"]:
-            caps.append({"text": cnh["vo"], "start_ms": t0, "end_ms": t0 + dur_ms, "words": []})
-        t0 += dur_ms
+    if them_caption:
+        t0 = 0
+        for cnh, sec_bd, sec_kt, _ in lich:
+            if cnh["vo"]:
+                caps.append({"text": cnh["vo"], "start_ms": int(sec_bd * 1000),
+                             "end_ms": int(sec_kt * 1000), "words": []})
     if caps:
         n0 = len(caps)
         caps = rechunk(caps, cap_chars, cap_words)
@@ -839,11 +982,14 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                 ttrack["segments"].append(ts)
         c["tracks"].append(ttrack)
         print(f"  [caption] chế độ = {caption_mode}")
-    else:
-        print("  [caption] Không có lời thoại nào trong cột VO — bỏ qua caption.")
 
-    print(f"\nTổng: {len(vtrack['segments'])} cảnh, {len(caps)} caption, video dài {V/1e6:.2f}s")
-    ket_qua = {"scenes": len(canh_list), "captions": len(caps), "duration_s": round(V / 1e6, 1)}
+    print(f"\nTổng: {len(vtrack['segments'])}/{len(canh_list)} cảnh lên hình, "
+          f"{len(caps)} caption, video dài {V/1e6:.2f}s")
+    ket_qua = {"scenes": len(vtrack["segments"]), "scenes_csv": len(canh_list),
+               "captions": len(caps), "duration_s": round(V / 1e6, 1),
+               "bo_qua": [c["scene"] for c in canh_list
+                          if c["scene"] not in {x[0]["scene"] for x in lich}],
+               "khop_yeu": canh_yeu}
     if not do_write:
         print("[DRY-RUN] Chưa ghi. Truyền do_write=True để tạo draft thật.")
         return ket_qua
@@ -884,6 +1030,12 @@ def main():
     ap.add_argument("--eqgym-csv", default=None, help="file CSV kịch bản (cột Scene,Duration,VO)")
     ap.add_argument("--eqgym-source", default=None, help="thư mục chứa video/ảnh đã tạo, tên khớp mã Scene")
     ap.add_argument("--eqgym-voice", default=None, help="file voiceover DUY NHẤT cho toàn bộ video")
+    ap.add_argument("--eqgym-caption", action="store_true",
+                    help="thêm caption (mặc định TẮT — video đã có chữ vẽ sẵn trong hình)")
+    ap.add_argument("--eqgym-transition", action="store_true",
+                    help="thêm hiệu ứng chuyển cảnh (mặc định TẮT — donor chỉ có 1 kiểu, lặp lại nhìn máy móc)")
+    ap.add_argument("--eqgym-khong-dong-bo", action="store_true",
+                    help="xếp theo cột Duration thay vì bám giọng đọc (nhanh, không cần bóc lời)")
     ap.add_argument("--yes", action="store_true")
     a = ap.parse_args()
     try:
@@ -891,7 +1043,9 @@ def main():
             if not (a.eqgym_source and a.eqgym_voice):
                 sys.exit("--eqgym-csv cần đi kèm --eqgym-source và --eqgym-voice")
             build_from_csv(a.eqgym_csv, a.eqgym_source, a.eqgym_voice, a.name, a.yes,
-                           a.caption, a.cap_chars, a.cap_words)
+                           a.caption, a.cap_chars, a.cap_words,
+                           them_caption=a.eqgym_caption, chuyen_canh=a.eqgym_transition,
+                           dong_bo_voice=not a.eqgym_khong_dong_bo, model_asr=a.model)
         else:
             if not a.folder:
                 sys.exit("Thiếu tham số folder (hoặc dùng --eqgym-csv cho quy trình EQ Gym)")

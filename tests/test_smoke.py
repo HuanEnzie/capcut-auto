@@ -351,6 +351,113 @@ def test_tim_nguon_canh_khong_co_thi_tra_ve_none(tmp_path):
     assert cb.tim_nguon_canh("C99", tmp_path) is None
 
 
+def _gia_words(cau: str, bat_dau_s: float, moi_chu_s: float = 0.5):
+    """Biến một câu thành list word-timestamp giả giống faster-whisper trả về."""
+    ra = []
+    t = bat_dau_s
+    for w in cau.split():
+        ra.append({"w": " " + w, "s": int(t * 1000), "e": int((t + moi_chu_s) * 1000)})
+        t += moi_chu_s
+    return ra
+
+
+def test_khop_canh_vao_voice_khong_theo_thu_tu_csv():
+    """Bắt lại phát hiện 03/08 trên dữ liệu EQ Gym thật: voice đọc C01..C15 rồi
+    NHẢY sang C18..C21 rồi mới quay lại C16,C17 — kịch bản CSV được xếp lại SAU khi
+    thu tiếng. Ghép tuần tự theo thứ tự CSV là toàn bộ nửa sau lệch hẳn."""
+    import capcut_build as cb
+    canh = [
+        {"scene": "C1", "vo": "hôm nay chúng ta bắt đầu buổi tập cảm xúc"},
+        {"scene": "C2", "vo": "phần kết xin cảm ơn các bạn đã lắng nghe"},
+        {"scene": "C3", "vo": "bài học thứ hai nói về sự kiên nhẫn mỗi ngày"},
+    ]
+    # voice đọc theo thứ tự C1 -> C3 -> C2 (khác CSV)
+    words = (_gia_words(canh[0]["vo"], 0)
+             + _gia_words(canh[2]["vo"], 10)
+             + _gia_words(canh[1]["vo"], 20))
+    da = cb._khop_canh_vao_voice(canh, words)
+    assert len(da) == 3, "phải khớp được cả 3 cảnh"
+    thu_tu = sorted(range(3), key=lambda i: da[i][0])
+    assert [canh[i]["scene"] for i in thu_tu] == ["C1", "C3", "C2"], \
+        "phải xếp theo thứ tự VOICE đọc, không phải thứ tự dòng CSV"
+
+
+def test_khop_canh_canh_gan_trung_loi_khong_cuop_cho_nhau():
+    """Bắt lại lỗi thật: C18 và C23 của EQ Gym cùng kết bằng 'để làm chủ bản thân,
+    kết nối người khác và sống đúng với điều quan trọng nhất'. Chấm điểm độc lập thì
+    cả hai cùng đòi một chỗ và cảnh khớp YẾU hơn cướp mất chỗ của cảnh khớp chắc —
+    nên phải giành chỗ theo độ tin cậy (best-first) rồi che vùng đã giành."""
+    import capcut_build as cb
+    chung = "để làm chủ bản thân kết nối người khác và sống đúng với điều quan trọng nhất"
+    canh = [
+        {"scene": "A", "vo": "mở đầu hành trình ba mươi ngày " + chung},
+        {"scene": "B", "vo": "tóm lại toàn bộ chương trình " + chung},
+    ]
+    words = (_gia_words(canh[0]["vo"], 0) + _gia_words("một đoạn khác xen giữa", 30)
+             + _gia_words(canh[1]["vo"], 40))
+    da = cb._khop_canh_vao_voice(canh, words)
+    assert len(da) == 2, "hai cảnh gần trùng lời vẫn phải ra hai vị trí khác nhau"
+    assert da[0][0] < da[1][0], "cảnh đọc trước phải nằm trước trên timeline"
+    assert not (da[0][0] <= da[1][0] < da[0][1]), "hai cảnh không được chồng vùng"
+
+
+def test_khop_canh_bo_qua_canh_khong_co_trong_voice():
+    """Voice không đọc cảnh nào thì cảnh đó KHÔNG được bịa chỗ — trả về thiếu để
+    tầng trên báo tên và bỏ khỏi timeline (luật cứng #2: không hỏng im lặng)."""
+    import capcut_build as cb
+    canh = [
+        {"scene": "A", "vo": "một hai ba bốn năm sáu bảy tám chín mười"},
+        {"scene": "B", "vo": "hoàn toàn không xuất hiện trong bản thu tiếng này"},
+    ]
+    words = _gia_words(canh[0]["vo"], 0)
+    da = cb._khop_canh_vao_voice(canh, words)
+    assert 0 in da and 1 not in da, "cảnh không có trong voice phải bị bỏ, không đoán bừa"
+
+
+def test_voice_khong_mang_metadata_nhac_online(tmp_path, monkeypatch):
+    """Bắt lại lỗi người dùng thật báo: 'import sai voice'. Donor 282new lấy audio
+    từ kho NHẠC ONLINE của CapCut; giữ nguyên music_id/category_name thì CapCut coi
+    file voice là bài nhạc đó, tự phân giải lại về cache của nó và ĐÈ MẤT đường dẫn
+    thật. Kèm theo: âm lượng donor chỉ ~26% (nhạc nền) trong khi voice là tiếng
+    chính, phải 100%."""
+    import shutil
+    import capcut_build as cb
+    if not shutil.which("ffmpeg"):
+        pytest.skip("máy này không có ffmpeg")
+    try:
+        cb.kiem_tra_draft_mau(cb.DONOR_VIDEO)
+    except FileNotFoundError:
+        pytest.skip("không có draft mẫu")
+
+    src = tmp_path / "src"; src.mkdir()
+    import subprocess as sp
+    sp.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=10:duration=2",
+            "-an", str(src / "C01.mp4")], check=True, capture_output=True)
+    voice = tmp_path / "voice.mp3"
+    sp.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+            str(voice)], check=True, capture_output=True)
+    (tmp_path / "kb.csv").write_text("Scene,Duration,VO\nC01,3,xin chào\n", encoding="utf-8")
+
+    monkeypatch.setattr(cb, "DRAFTS_ROOT", tmp_path / "drafts")
+    (tmp_path / "drafts").mkdir()
+    # dong_bo_voice=False: test này soi metadata audio, không cần chạy ASR (chậm)
+    cb.build_from_csv(tmp_path / "kb.csv", src, voice, "T", do_write=True,
+                      dong_bo_voice=False)
+
+    d = json.loads((tmp_path / "drafts" / "T" / "draft_content.json").read_text(encoding="utf-8"))
+    am = d["materials"]["audios"][0]
+    assert am["type"] == "extract_music", "phải là file local, không phải nhạc online"
+    assert am["category_name"] == "local"
+    assert not am.get("request_id"), "còn request_id của nhạc online -> CapCut đè mất path"
+    assert am["path"].endswith("voice.mp3")
+    aseg = next(t for t in d["tracks"] if t["type"] == "audio")["segments"][0]
+    assert aseg["volume"] == 1.0, "voice là tiếng chính, không được để mức nhạc nền"
+    assert not d["materials"].get("transitions"), \
+        "mặc định KHÔNG chèn chuyển cảnh — donor chỉ có 1 kiểu, lặp lại nhìn máy móc"
+    assert not any(t["type"] == "text" for t in d["tracks"]), \
+        "mặc định KHÔNG thêm caption — video EQ Gym đã có chữ vẽ sẵn trong hình"
+
+
 def test_chuoi_structured_output_co_model_han_ngach_cao():
     """Bug đã gặp: chuỗi structured output toàn model RPD 20 -> cạn giữa chừng,
     build chết ở phút thứ mười."""
