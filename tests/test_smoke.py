@@ -414,6 +414,46 @@ def test_khop_canh_bo_qua_canh_khong_co_trong_voice():
     assert 0 in da and 1 not in da, "cảnh không có trong voice phải bị bỏ, không đoán bừa"
 
 
+def test_doc_kich_ban_xls_lay_du_ca_slide(tmp_path):
+    """Bảng 'lưu ý CapCut' (.xls) mới là bản thiết kế thật: nó có đủ 28 dòng theo
+    đúng thứ tự dựng, trong đó xen 5 SLIDE CHỮ im lặng mà file CSV (chỉ có 23 cảnh
+    AI-gen) KHÔNG hề nhắc tới. Dựng thiếu slide là hỏng cả bố cục bài."""
+    import zipfile
+    import capcut_build as cb
+    xlsx = tmp_path / "luu_y.xlsx"
+    hang = [
+        ("STT", "Loại", "ID", "Dài (s)", "VO", "", "File ảnh cần chèn"),
+        ("1", "RENDER", "C01", "10", "xin chào các bạn", "", ""),
+        ("2", "SLIDE", "S1", "3", "(KHÔNG LỜI — slide chữ)", "", "slides/S1.png"),
+        ("3", "RENDER", "C02", "8", "hôm nay học gì", "", ""),
+    ]
+    def o_xml(r, c, v):
+        return (f'<c r="{chr(65+c)}{r}" t="inlineStr"><is><t>'
+                f'{v.replace("&","&amp;").replace("<","&lt;")}</t></is></c>')
+    rows = "".join(f'<row r="{i+1}">' + "".join(o_xml(i + 1, j, v) for j, v in enumerate(h))
+                   + "</row>" for i, h in enumerate(hang))
+    sheet = ('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/'
+             f'spreadsheetml/2006/main"><sheetData>{rows}</sheetData></worksheet>')
+    with zipfile.ZipFile(xlsx, "w") as z:
+        z.writestr("xl/worksheets/sheet1.xml", sheet)
+
+    canh = cb.doc_kich_ban(xlsx)
+    assert [c["scene"] for c in canh] == ["C01", "S1", "C02"], "phải giữ đúng thứ tự dựng"
+    assert canh[1]["loai"] == "slide" and canh[1]["anh"] == "slides/S1.png"
+    assert canh[1]["vo"] == "", \
+        "ô VO của slide là ghi chú '(KHÔNG LỜI...)', không phải câu để đi tìm trong bản thu"
+    assert canh[0]["loai"] == "render" and canh[0]["duration_s"] == 10
+
+
+def test_tim_nguon_canh_theo_ten_anh_bo_phan_thu_muc(tmp_path):
+    """Bảng ghi 'slides/SLIDE_1_....png' theo cấu trúc dự định, còn thực tế người
+    dùng để phẳng cùng một chỗ — phải tìm theo TÊN FILE, bỏ phần thư mục."""
+    import capcut_build as cb
+    (tmp_path / "SLIDE_1_tai-sao.png").write_bytes(b"x")
+    got = cb.tim_nguon_canh("S1", tmp_path, "slides/SLIDE_1_tai-sao.png")
+    assert got is not None and got.name == "SLIDE_1_tai-sao.png"
+
+
 def test_voice_khong_mang_metadata_nhac_online(tmp_path, monkeypatch):
     """Bắt lại lỗi người dùng thật báo: 'import sai voice'. Donor 282new lấy audio
     từ kho NHẠC ONLINE của CapCut; giữ nguyên music_id/category_name thì CapCut coi

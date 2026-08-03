@@ -586,20 +586,110 @@ def doc_kich_ban_csv(csv_path) -> list:
                 raise RuntimeError(
                     f"Dòng {i} (Scene '{scene}'): Duration không hợp lệ "
                     f"({row.get('Duration')!r}) — phải là số giây > 0.")
-            canh.append({"scene": scene, "duration_s": dur, "vo": (row.get("VO") or "").strip()})
+            canh.append({"scene": scene, "loai": "render", "duration_s": dur,
+                         "vo": (row.get("VO") or "").strip(), "anh": None})
     if not canh:
         raise RuntimeError(f"CSV không có dòng nào có Scene: {csv_path}")
     return canh
 
 
-def tim_nguon_canh(scene: str, source_dir) -> Path:
+def doc_kich_ban_xls(path) -> list:
+    """Đọc bản 'lưu ý CapCut' (.xls/.xlsx) — ĐÂY MỚI LÀ BẢN THIẾT KẾ THẬT của video.
+
+    Hơn hẳn file CSV ở chỗ: CSV chỉ có 23 cảnh AI-gen, còn bảng này có đủ 28 dòng
+    theo ĐÚNG thứ tự dựng, trong đó xen 5 SLIDE CHỮ im lặng (S1..S5) mà CSV không
+    hề nhắc tới — dựng thiếu là hỏng cả bố cục bài.
+
+    Cột: STT | Loại (RENDER/SLIDE) | ID | Dài (s) | VO | Màn hình hiện gì |
+         File ảnh cần chèn | Hướng dẫn CapCut
+
+    Đọc thẳng XML trong file (zipfile + ElementTree của thư viện chuẩn) thay vì
+    thêm openpyxl: chỉ cần vài cột đầu, không đáng thêm một phụ thuộc phải cài
+    trên mọi máy và phải gói vào bản .exe."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    z = zipfile.ZipFile(path)
+    chung = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        r = ET.fromstring(z.read("xl/sharedStrings.xml"))
+        chung = ["".join(t.text or "" for t in si.iter(ns + "t")) for si in r.findall(ns + "si")]
+    sh = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
+
+    hang = []
+    for row in sh.iter(ns + "row"):
+        o = {}
+        for cell in row.findall(ns + "c"):
+            cot = re.match(r"([A-Z]+)", cell.get("r") or "A")
+            cot = cot.group(1) if cot else "A"
+            v = cell.find(ns + "v")
+            if cell.get("t") == "s" and v is not None:
+                txt = chung[int(v.text)] if int(v.text) < len(chung) else ""
+            else:
+                txt = "".join(t.text or "" for t in cell.iter(ns + "t")) or (v.text if v is not None else "")
+            o[cot] = (txt or "").strip()
+        if o:
+            hang.append(o)
+
+    canh = []
+    for o in hang:
+        loai, ma = (o.get("B") or "").upper(), (o.get("C") or "").strip()
+        if loai not in ("RENDER", "SLIDE") or not ma:
+            continue                       # bỏ dòng tiêu đề / dòng trống
+        try:
+            dur = float(o.get("D") or 0)
+        except ValueError:
+            dur = 0
+        if dur <= 0:
+            raise RuntimeError(f"Dòng ID '{ma}': cột 'Dài (s)' không hợp lệ ({o.get('D')!r}).")
+        canh.append({
+            "scene": ma,
+            "loai": "slide" if loai == "SLIDE" else "render",
+            "duration_s": dur,
+            # Slide KHÔNG có lời — ô VO của nó là ghi chú '(KHÔNG LỜI — ...)', không
+            # phải câu để đọc. Nhận nhầm là bước khớp giọng đi tìm một câu không tồn
+            # tại trong bản thu.
+            "vo": "" if loai == "SLIDE" else (o.get("E") or "").strip(),
+            "anh": (o.get("G") or "").strip() or None,
+        })
+    if not canh:
+        raise RuntimeError(f"Không đọc được dòng RENDER/SLIDE nào trong {path}")
+    return canh
+
+
+def doc_kich_ban(path) -> list:
+    """Đọc kịch bản, tự nhận .csv hay .xls/.xlsx."""
+    return (doc_kich_ban_xls(path) if str(path).lower().endswith((".xls", ".xlsx"))
+            else doc_kich_ban_csv(path))
+
+
+def tim_nguon_canh(scene: str, source_dir, ten_goi_y: str = None) -> Path:
     """Tìm file trong source_dir có TÊN BẮT ĐẦU bằng đúng mã Scene, không phân biệt
     hoa/thường — Scene 'C01' khớp C01.mp4, c01_v2.mov, C01.png. Nhiều file cùng
     khớp thì ưu tiên tên TRÙNG KHỚP TUYỆT ĐỐI (C01.mp4) trước file có hậu tố
     (C01_v2.mp4), để người dùng chủ động chọn bản nào là bản chính bằng cách đặt
-    tên đúng — không đoán bản nào "mới hơn" hộ họ."""
+    tên đúng — không đoán bản nào "mới hơn" hộ họ.
+
+    `ten_goi_y` — cột 'File ảnh cần chèn' của bảng lưu ý CapCut, dạng
+    'slides/SLIDE_1_....png'. Tìm theo TÊN FILE thôi, bỏ phần thư mục: bảng ghi
+    đường dẫn theo cấu trúc dự định, còn thực tế người dùng để phẳng cùng một chỗ.
+    Tìm cả trong thư mục con để hai kiểu sắp xếp đều chạy."""
+    src = Path(source_dir)
+    if ten_goi_y:
+        ten = Path(ten_goi_y.replace("\\", "/")).name
+        ung = [p for p in src.rglob(ten) if p.is_file()]
+        if ung:
+            return ung[0]
+        # Không thấy đúng tên -> thử theo phần đầu tên file (bỏ đuôi), phòng khi
+        # người dùng đổi tên nhẹ. Vẫn không thấy thì rơi xuống cách tìm theo mã.
+        goc = Path(ten).stem.lower()
+        ung = sorted(p for p in src.rglob("*")
+                     if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+                     and p.stem.lower() == goc)
+        if ung:
+            return ung[0]
     exts = VIDEO_EXTS | IMAGE_EXTS
-    ung_vien = sorted(p for p in Path(source_dir).iterdir()
+    ung_vien = sorted(p for p in src.iterdir()
                       if p.is_file() and p.suffix.lower() in exts
                       and p.stem.lower().startswith(scene.lower()))
     if not ung_vien:
@@ -734,37 +824,46 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     kiem_tra_draft_mau(DONOR_VIDEO)
     if not voice_path.exists():
         raise RuntimeError(f"Không thấy file voice: {voice_path}")
-    canh_list = doc_kich_ban_csv(csv_path)
+    canh_list = doc_kich_ban(csv_path)
 
     thieu, nguon = [], {}
     for c in canh_list:
-        p = tim_nguon_canh(c["scene"], source_dir)
+        p = tim_nguon_canh(c["scene"], source_dir, c.get("anh"))
         if p is None:
-            thieu.append(c["scene"])
+            thieu.append(c["scene"] + (f" (cần {c['anh']})" if c.get("anh") else ""))
         else:
             nguon[c["scene"]] = p
     if thieu:
-        raise RuntimeError(
-            f"Thiếu file nguồn cho {len(thieu)}/{len(canh_list)} cảnh: {', '.join(thieu)}. "
-            f"Tên file trong '{source_dir}' phải bắt đầu bằng đúng mã Scene (vd C01.mp4).")
+        # Thiếu ảnh slide thì BỎ dòng đó và báo tên, không dừng cả lượt dựng: bảng
+        # lưu ý có thể trỏ tới ảnh chưa xuất (vd infographic tổng kết), trong khi
+        # 27 dòng còn lại vẫn dựng được và vẫn đáng xem.
+        canh_list = [c for c in canh_list if c["scene"] in nguon]
+        print(f"⚠️  Thiếu file nguồn, BỎ QUA {len(thieu)} dòng: {', '.join(thieu)}")
+        if not canh_list:
+            raise RuntimeError("Không còn dòng nào có đủ file nguồn để dựng.")
 
-    print(f"Kịch bản : {len(canh_list)} cảnh, tổng khai báo {sum(c['duration_s'] for c in canh_list):.1f}s")
+    n_render = sum(1 for c in canh_list if c.get("loai", "render") == "render")
+    n_slide = len(canh_list) - n_render
+    print(f"Kịch bản : {len(canh_list)} dòng ({n_render} clip + {n_slide} slide), "
+          f"tổng khai báo {sum(c['duration_s'] for c in canh_list):.1f}s")
     print(f"Voice    : {voice_path.name}")
 
     cache_dir = voice_path.parent / ".eqgym_cache"
     for c in canh_list:
         p = nguon[c["scene"]]
         if p.suffix.lower() in IMAGE_EXTS:
-            print(f"  [{c['scene']}] ảnh slide -> clip tĩnh {c['duration_s']:.1f}s...")
+            print(f"  [{c['scene']}] ảnh -> clip tĩnh {c['duration_s']:.1f}s...")
             nguon[c["scene"]] = _anh_thanh_clip_tinh(p, c["duration_s"], cache_dir)
 
     vinfo = probe(voice_path)
     V = vinfo["duration_us"]
 
-    # ---- ĐỒNG BỘ THEO GIỌNG ĐỌC: tìm mỗi cảnh được đọc ở giây nào ----
-    # `lich` = danh sách cảnh ĐÃ SẮP THEO THỨ TỰ TRÊN TIMELINE, mỗi phần tử là
-    # (cảnh, giây_bắt_đầu, giây_kết_thúc_ô, tỷ_lệ_khớp_lời).
-    lich, canh_yeu = [], []
+    # ---- XẾP TIMELINE ----
+    # `lich`      : (dòng, giây_bắt_đầu, giây_kết_thúc, tỷ_lệ_khớp) theo thứ tự hình.
+    # `audio_segs`: (giây_trong_voice_từ, đến, đặt_tại_giây_trên_timeline) — nhiều
+    #               đoạn chứ không phải một mạch, vì SLIDE phải IM LẶNG: voice bị
+    #               cắt ra và đẩy phần sau lùi lại đúng bằng thời lượng slide.
+    lich, canh_yeu, audio_segs = [], [], []
     if dong_bo_voice:
         print(f"  [đồng bộ] bóc lời voice bằng model '{model_asr}' để lấy mốc từng chữ...")
         caps = transcribe(voice_path, model_asr)
@@ -773,32 +872,93 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             print("  [đồng bộ] ⚠️ không bóc được lời nào — lùi về xếp theo cột Duration.")
             dong_bo_voice = False
         else:
-            da = _khop_canh_vao_voice(canh_list, words)
-            tim_thay = sorted(((words[lo]["s"] / 1000, i, ty) for i, (lo, hi, ty) in da.items()),
-                              key=lambda x: x[0])
-            mat = [canh_list[i]["scene"] for i in range(len(canh_list)) if i not in da]
-            for pos, (sec, i, ty) in enumerate(tim_thay):
-                ke_tiep = tim_thay[pos + 1][0] if pos + 1 < len(tim_thay) else V / 1e6
-                lich.append((canh_list[i], sec, ke_tiep, ty))
-                if ty < 0.5:
-                    canh_yeu.append(canh_list[i]["scene"])
+            co_loi = [c for c in canh_list if c.get("loai", "render") == "render" and c["vo"]]
+            da = _khop_canh_vao_voice(co_loi, words)
+            vung = {}                     # mã cảnh -> (giây đầu, giây cuối) trong voice
+            for i, (lo, hi, ty) in da.items():
+                vung[co_loi[i]["scene"]] = (words[lo]["s"] / 1000,
+                                            words[min(hi, len(words)) - 1]["e"] / 1000, ty)
+            mat = [c["scene"] for c in co_loi if c["scene"] not in vung]
             if mat:
-                # Không khớp được lời -> KHÔNG bịa chỗ. Báo tên cảnh để người dùng
-                # tự đối chiếu; cảnh đó bị bỏ khỏi timeline, nói rõ chứ không lặng lẽ.
+                # Không khớp được lời -> KHÔNG bịa chỗ. Báo tên để người dùng đối
+                # chiếu; dòng đó bị bỏ khỏi timeline, nói rõ chứ không lặng lẽ.
                 print(f"  [đồng bộ] ⚠️ {len(mat)} cảnh KHÔNG tìm thấy lời trong voice, "
                       f"bị bỏ khỏi timeline: {', '.join(mat)}")
+
+            # Tách kịch bản thành chuỗi xen kẽ: slide đơn lẻ và CỤM clip liên tiếp.
+            # Gom cụm vì giọng đọc trong cụm là một mạch liền, cắt giữa là mất chữ.
+            muc, i = [], 0
+            while i < len(canh_list):
+                if canh_list[i].get("loai", "render") == "slide":
+                    muc.append(("slide", canh_list[i])); i += 1
+                else:
+                    cum = []
+                    while i < len(canh_list) and canh_list[i].get("loai", "render") == "render":
+                        cum.append(canh_list[i]); i += 1
+                    co = [x for x in cum if x["scene"] in vung]
+                    if co:
+                        co.sort(key=lambda x: vung[x["scene"]][0])
+                        muc.append(("cum", co))
+
+            # SLIDE ĂN ĐÚNG ĐOẠN TIẾNG NẰM GIỮA HAI CỤM. Đo trên voice.mp3 thật:
+            # giọng CÓ đọc cả 4 tiêu đề slide ("Tại sao là EQ Gym?", "Lời kết"...),
+            # dù bảng lưu ý ghi slide "im lặng". Nếu cứ để slide im theo bảng thì
+            # phải vứt ~20 giây tiếng đó đi, và chỗ nối nghe cụt ngang. Cho slide
+            # ôm đúng đoạn tiếng của nó thì không mất chữ nào, tiếng chạy liền một
+            # mạch, và slide vẫn hiện đúng lúc tiêu đề được đọc.
+            t = 0.0
+            for k, (loai, noi_dung) in enumerate(muc):
+                if loai == "slide":
+                    truoc = next((m for m in reversed(muc[:k]) if m[0] == "cum"), None)
+                    sau = next((m for m in muc[k + 1:] if m[0] == "cum"), None)
+                    if truoc and sau:
+                        dai = max(0.2, vung[sau[1][0]["scene"]][0]
+                                  - max(vung[x["scene"]][1] for x in truoc[1]))
+                    else:
+                        dai = noi_dung["duration_s"]   # slide đầu/cuối: theo bảng
+                    lich.append((noi_dung, t, t + dai, 1.0))
+                    t += dai
+                    continue
+                co = noi_dung
+                vs = vung[co[0]["scene"]][0]
+                ve = max(vung[x["scene"]][1] for x in co)
+                audio_segs.append((vs, ve, t))
+                for j, x in enumerate(co):
+                    b = vung[x["scene"]][0]
+                    ke = vung[co[j + 1]["scene"]][0] if j + 1 < len(co) else ve
+                    lich.append((x, t + (b - vs), t + (ke - vs), vung[x["scene"]][2]))
+                    if vung[x["scene"]][2] < 0.5:
+                        canh_yeu.append(x["scene"])
+                t += (ve - vs)
+
+            # Slide ôm trọn khoảng tiếng giữa hai cụm nên timeline giờ chạy ĐÚNG
+            # NHỊP với file voice (cùng một độ lệch cho mọi đoạn). Khi đó chỉ cần
+            # MỘT đoạn tiếng trải suốt: giọng chạy liền mạch, không mối nối nào
+            # nghe cụt, và không mất câu nào — kể cả 4 tiêu đề slide mà giọng có
+            # đọc (đo trên voice.mp3 thật) nhưng bảng lưu ý lại ghi là "im lặng".
+            lech = {round(tl - vs, 2) for vs, _, tl in audio_segs}
+            if len(lech) == 1:
+                d0 = lech.pop()
+                audio_segs = [(0.0, V / 1e6, max(0.0, d0))]
+                if d0 < 0:      # voice bắt đầu trước mốc 0 của timeline -> cắt bớt đầu
+                    audio_segs = [(-d0, V / 1e6, 0.0)]
+
             if canh_yeu:
                 print(f"  [đồng bộ] ⚠️ khớp yếu (<50% chữ), vị trí có thể sai: {', '.join(canh_yeu)}")
-            thu_tu = [x[0]["scene"] for x in lich]
-            if thu_tu != [c["scene"] for c in canh_list if c["scene"] in thu_tu]:
-                print(f"  [đồng bộ] ⚠️ VOICE ĐỌC KHÁC THỨ TỰ CSV — xếp hình theo voice: "
-                      f"{' '.join(thu_tu)}")
-            print(f"  [đồng bộ] khớp {len(lich)}/{len(canh_list)} cảnh vào giọng đọc")
+            xep = [x[0]["scene"] for x in lich if x[0].get("loai", "render") == "render"]
+            goc = [c["scene"] for c in canh_list
+                   if c.get("loai", "render") == "render" and c["scene"] in set(xep)]
+            if xep != goc:
+                print(f"  [đồng bộ] ⚠️ VOICE ĐỌC KHÁC THỨ TỰ KỊCH BẢN — xếp hình theo voice: "
+                      f"{' '.join(xep)}")
+            print(f"  [đồng bộ] khớp {len(xep)}/{len(co_loi)} clip vào giọng đọc, "
+                  f"chèn {sum(1 for x in lich if x[0].get('loai') == 'slide')} slide im lặng")
     if not dong_bo_voice:
         t = 0.0
         for cnh in canh_list:
             lich.append((cnh, t, t + cnh["duration_s"], 1.0))
             t += cnh["duration_s"]
+        audio_segs = [(0.0, V / 1e6, 0.0)]
 
     # ---- donor (chỉ 282new — xem giải thích ở kiem_tra_draft_mau phía trên) ----
     dv = load_draft(DONOR_VIDEO)
@@ -863,7 +1023,7 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         # miệng bắt đầu mấp máy) trải đúng vào ô thời gian mà giọng thật đang đọc
         # cảnh này -> khẩu hình bám giọng. Xem _diem_noi() cho số đo thật.
         cat_dau = 0
-        if dong_bo_voice and ci["has_audio"]:
+        if dong_bo_voice and ci["has_audio"] and cnh.get("loai", "render") == "render":
             noi_bd, _ = _diem_noi(clip)
             cat_dau = int(noi_bd * 1_000_000)
         con_lai = max(1, ci["duration_us"] - cat_dau)
@@ -918,17 +1078,20 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             am[k] = ""
     am["source_platform"] = 0
     add_mat("audios", am)
-    aseg = copy.deepcopy(aseg_tpl)
-    aseg["id"] = uid()
-    aseg["material_id"] = am["id"]
-    aseg["extra_material_refs"] = []
-    aseg["source_timerange"] = {"start": 0, "duration": V}
-    aseg["target_timerange"] = {"start": 0, "duration": V}
-    # Donor là NHẠC NỀN nên âm lượng chỉ ~26% — để nguyên thì giọng đọc bé xíu.
-    # Đây là tiếng chính của video, phải 100%.
-    aseg["volume"] = 1.0
-    aseg["last_nonzero_volume"] = 1.0
-    atrack["segments"].append(aseg)
+    for vs, ve, tl in audio_segs:
+        aseg = copy.deepcopy(aseg_tpl)
+        aseg["id"] = uid()
+        aseg["material_id"] = am["id"]
+        aseg["extra_material_refs"] = []
+        aseg["source_timerange"] = {"start": int(vs * 1e6),
+                                    "duration": max(1000, int((ve - vs) * 1e6))}
+        aseg["target_timerange"] = {"start": int(tl * 1e6),
+                                    "duration": max(1000, int((ve - vs) * 1e6))}
+        # Donor là NHẠC NỀN nên âm lượng chỉ ~26% — để nguyên thì giọng đọc bé xíu.
+        # Đây là tiếng chính của video, phải 100%.
+        aseg["volume"] = 1.0
+        aseg["last_nonzero_volume"] = 1.0
+        atrack["segments"].append(aseg)
     c["tracks"].append(atrack)
 
     # ---- CAPTION TRACK — MẶC ĐỊNH TẮT ----
@@ -983,10 +1146,15 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         c["tracks"].append(ttrack)
         print(f"  [caption] chế độ = {caption_mode}")
 
-    print(f"\nTổng: {len(vtrack['segments'])}/{len(canh_list)} cảnh lên hình, "
-          f"{len(caps)} caption, video dài {V/1e6:.2f}s")
+    # Timeline dài hơn file voice đúng bằng tổng thời lượng các slide im lặng —
+    # phải lấy mốc kết thúc THẬT của track hình, không phải độ dài voice.
+    het = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"])
+              for s in vtrack["segments"])
+    c["duration"] = het
+    print(f"\nTổng: {len(vtrack['segments'])}/{len(canh_list)} dòng lên hình, "
+          f"{len(caps)} caption, video dài {het/1e6:.2f}s (voice {V/1e6:.2f}s)")
     ket_qua = {"scenes": len(vtrack["segments"]), "scenes_csv": len(canh_list),
-               "captions": len(caps), "duration_s": round(V / 1e6, 1),
+               "captions": len(caps), "duration_s": round(het / 1e6, 1),
                "bo_qua": [c["scene"] for c in canh_list
                           if c["scene"] not in {x[0]["scene"] for x in lich}],
                "khop_yeu": canh_yeu}
@@ -1006,7 +1174,7 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     meta["draft_name"] = out_name
     meta["draft_fold_path"] = str(out_dir).replace("\\", "/")
     meta["draft_materials"] = []
-    meta["tm_duration"] = V
+    meta["tm_duration"] = het
     with open(out_dir / "draft_meta_info.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(meta, **_DUMP))
     print(f"\n✅ Đã tạo draft: {out_dir}")
