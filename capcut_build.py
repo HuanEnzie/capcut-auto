@@ -649,6 +649,14 @@ def doc_kich_ban_xls(path) -> list:
             dur = 0
         if dur <= 0:
             raise RuntimeError(f"Dòng ID '{ma}': cột 'Dài (s)' không hợp lệ ({o.get('D')!r}).")
+        # Cột 'Hướng dẫn CapCut' phân biệt hai loại clip, và đây là thứ quyết định
+        # cách dựng khác nhau hoàn toàn:
+        #   · "CÓ TIẾNG — Yuki nhép môi, MP3 phải bám nhịp khẩu hình" -> khẩu hình
+        #     phải khớp giọng, tốc độ chỉ được nhích quanh 1.0.
+        #   · "CÂM HOÀN TOÀN — MP3 co giãn tự do" -> không có miệng nào để khớp,
+        #     tha hồ CẮT BỚT cho vừa ô thời gian (cắt sạch hơn hẳn kéo giãn).
+        hd = (o.get("H") or "")
+        nhep_moi = "CÓ TIẾNG" in hd.upper() or "CO TIENG" in hd.upper()
         canh.append({
             "scene": ma,
             "loai": "slide" if loai == "SLIDE" else "render",
@@ -658,6 +666,7 @@ def doc_kich_ban_xls(path) -> list:
             # tại trong bản thu.
             "vo": "" if loai == "SLIDE" else (o.get("E") or "").strip(),
             "anh": (o.get("G") or "").strip() or None,
+            "nhep_moi": nhep_moi and loai == "RENDER",
         })
     if not canh:
         raise RuntimeError(f"Không đọc được dòng RENDER/SLIDE nào trong {path}")
@@ -695,12 +704,16 @@ def tim_nguon_canh(scene: str, source_dir, ten_goi_y: str = None) -> Path:
                      and p.stem.lower() == goc)
         if ung:
             return ung[0]
+    # Tìm CẢ THƯ MỤC CON: bài giảng thật xếp clip trong 'suộc video/', slide trong
+    # 'slides/', clip trám trong 'trám (opt)/' — không phẳng một chỗ như bài đầu.
     exts = VIDEO_EXTS | IMAGE_EXTS
-    ung_vien = sorted(p for p in src.iterdir()
+    ung_vien = sorted(p for p in src.rglob("*")
                       if p.is_file() and p.suffix.lower() in exts
                       and p.stem.lower().startswith(scene.lower()))
     if not ung_vien:
         return None
+    # Ưu tiên tên TRÙNG KHỚP TUYỆT ĐỐI. Quan trọng khi có thư mục trám: cảnh '2-01'
+    # phải lấy 'suộc video/2-01.mp4', đừng vớ nhầm một file trám tên gần giống.
     khop_dung = [p for p in ung_vien if p.stem.lower() == scene.lower()]
     return (khop_dung or ung_vien)[0]
 
@@ -803,6 +816,48 @@ def _khop_canh_vao_voice(canh_list, words) -> dict:
     return da
 
 
+def _doc_kho_tram(tram_dir) -> dict:
+    """Đọc kho clip TRÁM (B-roll dự phòng) -> {số mục: [file, ...]}.
+
+    Bài giảng thật có thư mục 'trám (opt)' với clip đặt tên theo MỤC: 1-1, 1-2,
+    2-1..2-9, 3-1..3-13... Số đầu là mục thứ mấy (mỗi slide đóng lại một mục), nên
+    khi một cảnh hụt hình thì lấy đúng clip cùng mục — cảnh trám vẫn ăn nhập bối
+    cảnh, không nhảy sang chỗ khác của bài."""
+    if not tram_dir:
+        return {}
+    d = Path(tram_dir)
+    if not d.is_dir():
+        return {}
+    kho = {}
+    for p in sorted(d.rglob("*")):
+        if not p.is_file() or p.suffix.lower() not in VIDEO_EXTS:
+            continue
+        m = re.match(r"(\d+)", p.stem)
+        if m:
+            kho.setdefault(int(m.group(1)), []).append(p)
+    return kho
+
+
+def _lay_clip_tram(kho: dict, muc: int, can_us: int, da_dung: set):
+    """Chọn một clip trám CHƯA DÙNG, ưu tiên đúng mục rồi mới lan ra mục khác.
+
+    Không dùng lại clip đã trám: lặp lại đúng một cảnh B-roll trong cùng bài là
+    thứ người xem nhận ra ngay. Hết clip thì trả None để tầng trên quay về giữ
+    khung cuối."""
+    if not kho:
+        return None
+    thu_tu = [muc] + [k for k in sorted(kho) if k != muc]
+    for k in thu_tu:
+        for p in kho.get(k, []):
+            if p in da_dung:
+                continue
+            # Clip trám phải ĐỦ DÀI cho chỗ hụt, không thì lại phải kéo giãn nó.
+            if probe(p)["duration_us"] >= can_us:
+                da_dung.add(p)
+                return p
+    return None
+
+
 def _khung_cuoi(clip: Path, giay: float, cache_dir: Path) -> Path:
     """Trích một KHUNG HÌNH của clip tại giây `giay` ra PNG, để giữ đứng hình.
 
@@ -830,7 +885,7 @@ def _khung_cuoi(clip: Path, giay: float, cache_dir: Path) -> Path:
 def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                     caption_mode="template", cap_chars=18, cap_words=5,
                     them_caption=False, chuyen_canh=False, dong_bo_voice=True,
-                    model_asr="small") -> dict:
+                    model_asr="small", voice_intro=None, tram_dir=None) -> dict:
     """Dựng 1 draft CapCut từ kịch bản CSV (quy trình EQ Gym AI Editor).
 
     `dong_bo_voice=True` (mặc định) — GIỌNG ĐỌC LÀ GỐC THỜI GIAN, không phải cột
@@ -889,6 +944,18 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     #               đoạn chứ không phải một mạch, vì SLIDE phải IM LẶNG: voice bị
     #               cắt ra và đẩy phần sau lùi lại đúng bằng thời lượng slide.
     lich, canh_yeu, audio_segs = [], [], []
+    # VO mở đầu (vd "VO title b2.mp3" — đọc tên bài) phát TRƯỚC giọng chính rồi
+    # đẩy toàn bộ phần sau lùi lại. Đo trên b2.mp3 thật: giọng chính vào ngay từ
+    # giây 0, không chừa chỗ nào — nên không thể chèn đè, phải nối trước.
+    t0_intro = 0.0
+    intro_us = 0
+    if voice_intro:
+        voice_intro = Path(voice_intro)
+        if not voice_intro.exists():
+            raise RuntimeError(f"Không thấy file VO mở đầu: {voice_intro}")
+        intro_us = probe(voice_intro)["duration_us"]
+        t0_intro = intro_us / 1e6
+        print(f"VO mở đầu: {voice_intro.name} ({t0_intro:.2f}s) — đẩy giọng chính lùi lại")
     if dong_bo_voice:
         print(f"  [đồng bộ] bóc lời voice bằng model '{model_asr}' để lấy mốc từng chữ...")
         caps = transcribe(voice_path, model_asr)
@@ -915,7 +982,13 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             muc, i = [], 0
             while i < len(canh_list):
                 if canh_list[i].get("loai", "render") == "slide":
-                    muc.append(("slide", canh_list[i])); i += 1
+                    # GOM SLIDE LIỀN KỀ thành một cụm. Bài 2 có IMG01 rồi S6 nằm
+                    # sát nhau; xử lý riêng lẻ thì CẢ HAI cùng đòi một khoảng tiếng
+                    # giữa hai cụm clip -> cộng đôi, hình chồng lấn 1,4s.
+                    dan = []
+                    while i < len(canh_list) and canh_list[i].get("loai", "render") == "slide":
+                        dan.append(canh_list[i]); i += 1
+                    muc.append(("slide", dan))
                 else:
                     cum = []
                     while i < len(canh_list) and canh_list[i].get("loai", "render") == "render":
@@ -925,36 +998,51 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                         co.sort(key=lambda x: vung[x["scene"]][0])
                         muc.append(("cum", co))
 
-            # MỐC BẮT ĐẦU của từng dòng, tính THẲNG TRÊN TRỤC THỜI GIAN CỦA FILE
-            # VOICE — timeline chạy 1:1 với giọng đọc, không cộng dồn thủ công nên
-            # không có chỗ nào tích luỹ sai số.
-            #   · clip  -> mốc = lúc câu của nó bắt đầu được đọc
-            #   · slide -> mốc = lúc cụm clip trước đó đọc xong; nó ôm trọn khoảng
-            #     tiếng ở giữa. Đo trên voice.mp3 thật: giọng CÓ đọc cả 4 tiêu đề
-            #     slide ("Tại sao là e q Gym?", "Lời kết"...) dù bảng lưu ý ghi
-            #     slide "im lặng" — để im theo bảng là phải vứt ~20 giây tiếng đó.
-            moc = []
+            # XẾP TIMELINE — đi tuần tự qua kịch bản, cộng dồn `t`.
+            #   · clip  : chiếm đúng khoảng nó được đọc trong file voice.
+            #   · slide : dài bằng MAX(thời lượng bảng yêu cầu, khoảng tiếng giữa
+            #     hai cụm). Lấy max vì hai bài giảng thật hành xử khác hẳn nhau —
+            #     bài 1 giọng CÓ đọc tiêu đề slide (khoảng tiếng 4,4s > 3s, slide
+            #     phải ôm trọn kẻo vứt mất tiếng), bài 2 giọng KHÔNG đọc (khoảng
+            #     tiếng 0,2s < 5s, phải giữ đủ 5 giây cho học viên chụp màn hình
+            #     đúng như bảng ghi). Phần dôi ra đẩy toàn bộ tiếng phía sau lùi
+            #     lại — `bu` giữ đúng độ lệch đó.
+            t, bu = t0_intro, t0_intro
+            dau_tien = True
             for k, (loai, nd) in enumerate(muc):
                 if loai == "slide":
                     truoc = next((m for m in reversed(muc[:k]) if m[0] == "cum"), None)
-                    moc.append((nd, max(vung[x["scene"]][1] for x in truoc[1]) if truoc else 0.0, 1.0))
-                else:
+                    sau = next((m for m in muc[k + 1:] if m[0] == "cum"), None)
+                    g_tu = max(vung[x["scene"]][1] for x in truoc[1]) if truoc else 0.0
+                    g_den = vung[sau[1][0]["scene"]][0] if sau else g_tu
+                    ho = max(0.0, g_den - g_tu)
+                    tong_bang = sum(x["duration_s"] for x in nd)
+                    tong = max(tong_bang, ho)
+                    if ho > 0.05:
+                        audio_segs.append((g_tu, g_den, t))
+                    # Chia thời lượng cho từng slide trong cụm theo đúng TỶ LỆ bảng
+                    # ghi, để slide nào bảng cho dài hơn thì vẫn dài hơn.
                     for x in nd:
-                        moc.append((x, vung[x["scene"]][0], vung[x["scene"]][2]))
-            if moc:
-                # Dòng đầu kéo về mốc 0 để phủ luôn khoảng lặng đầu file voice,
-                # nếu không thì đoạn đầu video trống hình.
-                moc[0] = (moc[0][0], 0.0, moc[0][2])
-            for j, (nd, s, ty) in enumerate(moc):
-                e = moc[j + 1][1] if j + 1 < len(moc) else V / 1e6
-                lich.append((nd, s, max(s + 0.2, e), ty))
-                # CẮT TIẾNG THEO TỪNG DÒNG (người dùng yêu cầu): mỗi cảnh một đoạn
-                # audio riêng thay vì một khối liền. Cùng trỏ vào một file mp3 nên
-                # không phải cắt file, không giảm chất lượng — nhưng trong CapCut
-                # là các mẩu tách rời, kéo/né từng cảnh được khi cần chỉnh tay.
-                audio_segs.append((s, max(s + 0.2, e), s))
-                if ty < 0.5:
-                    canh_yeu.append(nd["scene"])
+                        dai = tong * (x["duration_s"] / tong_bang) if tong_bang else tong
+                        lich.append((x, t, t + dai, 1.0))
+                        t += dai
+                    bu += tong - ho
+                    continue
+                for j, x in enumerate(nd):
+                    vs = 0.0 if dau_tien else vung[x["scene"]][0]
+                    dau_tien = False
+                    ve = (vung[nd[j + 1]["scene"]][0] if j + 1 < len(nd)
+                          else vung[x["scene"]][1])
+                    ve = max(ve, vs + 0.2)
+                    lich.append((x, bu + vs, bu + ve, vung[x["scene"]][2]))
+                    # CẮT TIẾNG THEO TỪNG DÒNG (người dùng yêu cầu): mỗi cảnh một
+                    # đoạn audio riêng thay vì một khối liền. Cùng trỏ vào một file
+                    # mp3 nên không phải cắt file, không giảm chất lượng — nhưng
+                    # trong CapCut là các mẩu tách rời, kéo/né từng cảnh được.
+                    audio_segs.append((vs, ve, bu + vs))
+                    if vung[x["scene"]][2] < 0.5:
+                        canh_yeu.append(x["scene"])
+                    t = bu + ve
 
             if canh_yeu:
                 print(f"  [đồng bộ] ⚠️ khớp yếu (<50% chữ), vị trí có thể sai: {', '.join(canh_yeu)}")
@@ -967,11 +1055,11 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             print(f"  [đồng bộ] khớp {len(xep)}/{len(co_loi)} clip vào giọng đọc, "
                   f"chèn {sum(1 for x in lich if x[0].get('loai') == 'slide')} slide im lặng")
     if not dong_bo_voice:
-        t = 0.0
+        t = t0_intro
         for cnh in canh_list:
             lich.append((cnh, t, t + cnh["duration_s"], 1.0))
             t += cnh["duration_s"]
-        audio_segs = [(0.0, V / 1e6, 0.0)]
+        audio_segs = [(0.0, V / 1e6, t0_intro)]
 
     # ---- donor (chỉ 282new — xem giải thích ở kiem_tra_draft_mau phía trên) ----
     dv = load_draft(DONOR_VIDEO)
@@ -1053,9 +1141,17 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         seg["render_index"] = thu_tu
         vtrack["segments"].append(seg)
 
-    n_giu, n_ep = 0, 0
+    kho_tram = _doc_kho_tram(tram_dir)
+    if kho_tram:
+        print(f"  [trám] có {sum(len(v) for v in kho_tram.values())} clip trám "
+              f"trong {len(kho_tram)} mục — dùng thay chỗ đứng hình")
+    da_dung_tram, muc_hien_tai = set(), 0
+    n_giu, n_ep, n_tram = 0, 0, 0
     for i, (cnh, sec_bd, sec_kt, ty_le) in enumerate(lich):
         la_slide = cnh.get("loai", "render") == "slide"
+        if la_slide:
+            # Mỗi slide đóng lại một mục; clip trám đánh số theo mục (1-x, 2-x...).
+            muc_hien_tai += 1
         o_bd = int(round(sec_bd * 1_000_000))
         o_dai = max(200_000, int(round((sec_kt - sec_bd) * 1_000_000)))
         goc = nguon[cnh["scene"]]
@@ -1099,15 +1195,25 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
 
         con_ho = o_dai - phu
         if con_ho > 40_000:                     # >0,04s mới đáng bù, dưới nữa là làm tròn
-            png = _khung_cuoi(goc, (cat_dau + src_dur) / 1e6, cache_dir)
-            giu = _anh_thanh_clip_tinh(png, con_ho / 1e6, cache_dir)
-            gi = probe(giu)
-            them_hinh(giu, f"{cnh['scene']} — giữ khung cuối", 0,
-                      min(gi["duration_us"], con_ho), o_bd + phu, con_ho, 1.0, i)
-            n_giu += 1
+            # ƯU TIÊN CLIP TRÁM (B-roll người dùng chuẩn bị sẵn trong 'trám (opt)')
+            # hơn là đứng hình: hình vẫn chuyển động, nhìn như dựng tay. Chỉ khi
+            # hết clip trám cùng mục mới quay về giữ khung cuối.
+            tr_clip = _lay_clip_tram(kho_tram, muc_hien_tai, con_ho, da_dung_tram)
+            if tr_clip is not None:
+                ti = probe(tr_clip)
+                them_hinh(tr_clip, f"{cnh['scene']} — trám {tr_clip.stem}", 0,
+                          min(ti["duration_us"], con_ho), o_bd + phu, con_ho, 1.0, i)
+                n_tram += 1
+            else:
+                png = _khung_cuoi(goc, (cat_dau + src_dur) / 1e6, cache_dir)
+                giu = _anh_thanh_clip_tinh(png, con_ho / 1e6, cache_dir)
+                gi = probe(giu)
+                them_hinh(giu, f"{cnh['scene']} — giữ khung cuối", 0,
+                          min(gi["duration_us"], con_ho), o_bd + phu, con_ho, 1.0, i)
+                n_giu += 1
     if n_ep:
-        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {TOC_CHAM_NHAT} "
-              f"-> giữ khung cuối cho {n_giu} chỗ (đứng hình thay vì giật hình)")
+        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {TOC_CHAM_NHAT} -> bù "
+              f"{n_tram} chỗ bằng clip trám, {n_giu} chỗ bằng giữ khung cuối")
     c["tracks"].append(vtrack)
 
     # BẢNG ĐỘ DÀI ĐO ĐƯỢC — thứ đáng giá nhất để lần sau khỏi phải đứng hình:
@@ -1149,6 +1255,34 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             am[k] = ""
     am["source_platform"] = 0
     add_mat("audios", am)
+
+    if intro_us:
+        # VO mở đầu là MỘT MATERIAL RIÊNG (file khác), cũng phải địa phương hoá
+        # y hệt giọng chính kẻo CapCut lại coi là nhạc online và đè mất path.
+        im = copy.deepcopy(amat_tpl)
+        im["id"] = uid()
+        im["path"] = str(voice_intro).replace("\\", "/")
+        im["name"] = voice_intro.name
+        im["duration"] = intro_us
+        im["type"] = "extract_music"
+        im["category_name"] = "local"
+        im["music_id"] = uid()
+        for k in ("category_id", "request_id", "resource_id", "effect_id",
+                  "local_material_id", "remote_url", "intensifies_path"):
+            if k in im:
+                im[k] = ""
+        im["source_platform"] = 0
+        add_mat("audios", im)
+        iseg = copy.deepcopy(aseg_tpl)
+        iseg["id"] = uid()
+        iseg["material_id"] = im["id"]
+        iseg["extra_material_refs"] = []
+        iseg["source_timerange"] = {"start": 0, "duration": intro_us}
+        iseg["target_timerange"] = {"start": 0, "duration": intro_us}
+        iseg["volume"] = 1.0
+        iseg["last_nonzero_volume"] = 1.0
+        atrack["segments"].append(iseg)
+
     for vs, ve, tl in audio_segs:
         aseg = copy.deepcopy(aseg_tpl)
         aseg["id"] = uid()

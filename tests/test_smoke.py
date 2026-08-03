@@ -445,6 +445,61 @@ def test_doc_kich_ban_xls_lay_du_ca_slide(tmp_path):
     assert canh[0]["loai"] == "render" and canh[0]["duration_s"] == 10
 
 
+def test_doc_kich_ban_xls_phan_biet_clip_nhep_moi_va_cam(tmp_path):
+    """Bảng bài 2 ghi rõ hai loại clip trong cột 'Hướng dẫn CapCut', và đây là thứ
+    quyết định cách dựng khác hẳn nhau: 'CÓ TIẾNG — Yuki nhép môi' phải bám khẩu
+    hình (tốc độ chỉ nhích quanh 1.0), còn 'CÂM HOÀN TOÀN' thì cắt bớt thoải mái."""
+    import zipfile
+    import capcut_build as cb
+    hang = [
+        ("STT", "Loại", "ID", "Dài (s)", "VO", "", "", "Hướng dẫn CapCut"),
+        ("1", "RENDER", "2-01", "8", "xin chào", "", "", "CÓ TIẾNG — Yuki nhép môi, MP3 bám nhịp"),
+        ("2", "RENDER", "2-02", "6", "cảnh minh hoạ", "", "", "CÂM HOÀN TOÀN — MP3 co giãn tự do"),
+        ("3", "SLIDE", "S1", "3", "(KHÔNG LỜI)", "", "slides/S1.png", "Thẻ tĩnh 3 giây"),
+    ]
+    def o_xml(r, c, v):
+        return (f'<c r="{chr(65+c)}{r}" t="inlineStr"><is><t>'
+                f'{v.replace("&","&amp;").replace("<","&lt;")}</t></is></c>')
+    rows = "".join(f'<row r="{i+1}">' + "".join(o_xml(i + 1, j, v) for j, v in enumerate(h))
+                   + "</row>" for i, h in enumerate(hang))
+    xlsx = tmp_path / "b.xlsx"
+    with zipfile.ZipFile(xlsx, "w") as z:
+        z.writestr("xl/worksheets/sheet1.xml",
+                   '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/'
+                   f'spreadsheetml/2006/main"><sheetData>{rows}</sheetData></worksheet>')
+    canh = {c["scene"]: c for c in cb.doc_kich_ban(xlsx)}
+    assert canh["2-01"]["nhep_moi"] is True
+    assert canh["2-02"]["nhep_moi"] is False
+    assert canh["S1"]["nhep_moi"] is False, "slide không có miệng nào để khớp"
+
+
+def test_kho_tram_lay_dung_muc_va_khong_dung_lai(tmp_path):
+    """Clip trám đánh số theo MỤC (1-x, 2-x...) vì mỗi slide đóng lại một mục —
+    lấy đúng mục thì cảnh trám còn ăn nhập bối cảnh. Và không được dùng lại một
+    clip: lặp đúng một cảnh B-roll trong cùng bài là người xem nhận ra ngay."""
+    import subprocess as sp
+    import shutil
+    import capcut_build as cb
+    if not shutil.which("ffmpeg"):
+        pytest.skip("máy này không có ffmpeg")
+    for ten in ("1-1", "2-1", "2-2"):
+        sp.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+                "testsrc=size=64x64:rate=10:duration=3", "-an", str(tmp_path / f"{ten}.mp4")],
+               check=True, capture_output=True)
+    kho = cb._doc_kho_tram(tmp_path)
+    assert set(kho) == {1, 2} and len(kho[2]) == 2
+
+    da = set()
+    a = cb._lay_clip_tram(kho, 2, 1_000_000, da)
+    assert a.stem.startswith("2-"), "phải ưu tiên clip cùng mục"
+    b = cb._lay_clip_tram(kho, 2, 1_000_000, da)
+    assert b != a, "không được trả lại clip đã dùng"
+    c = cb._lay_clip_tram(kho, 2, 1_000_000, da)
+    assert c is not None and c.stem.startswith("1-"), "hết clip cùng mục thì lan sang mục khác"
+    assert cb._lay_clip_tram(kho, 2, 1_000_000, da) is None, "hết sạch thì trả None để quay về giữ khung"
+    assert cb._lay_clip_tram(kho, 1, 99_000_000, set()) is None, "clip ngắn hơn chỗ hụt thì bỏ qua"
+
+
 def test_tim_nguon_canh_theo_ten_anh_bo_phan_thu_muc(tmp_path):
     """Bảng ghi 'slides/SLIDE_1_....png' theo cấu trúc dự định, còn thực tế người
     dùng để phẳng cùng một chỗ — phải tìm theo TÊN FILE, bỏ phần thư mục."""
@@ -452,6 +507,84 @@ def test_tim_nguon_canh_theo_ten_anh_bo_phan_thu_muc(tmp_path):
     (tmp_path / "SLIDE_1_tai-sao.png").write_bytes(b"x")
     got = cb.tim_nguon_canh("S1", tmp_path, "slides/SLIDE_1_tai-sao.png")
     assert got is not None and got.name == "SLIDE_1_tai-sao.png"
+
+
+def _dung_bai_thu(tmp_path, cb, hang, so_giay_voice=6.0, **kw):
+    """Dựng một draft tí hon từ bảng kịch bản cho sẵn — dùng chung cho các bài test
+    cần soi timeline thật thay vì suy luận."""
+    import subprocess as sp
+    import zipfile
+    src = tmp_path / "src"; src.mkdir(exist_ok=True)
+    for h in hang[1:]:
+        ma, loai = h[2], h[1]
+        if loai == "SLIDE":
+            sp.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=blue:s=64x64",
+                    "-frames:v", "1", str(src / f"{ma}.png")], check=True, capture_output=True)
+        else:
+            sp.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+                    f"testsrc=size=64x64:rate=10:duration={h[3]}", "-an",
+                    str(src / f"{ma}.mp4")], check=True, capture_output=True)
+    voice = tmp_path / "v.mp3"
+    sp.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+            f"sine=frequency=440:duration={so_giay_voice}", str(voice)],
+           check=True, capture_output=True)
+
+    def o_xml(r, c, v):
+        return (f'<c r="{chr(65+c)}{r}" t="inlineStr"><is><t>'
+                f'{str(v).replace("&","&amp;").replace("<","&lt;")}</t></is></c>')
+    rows = "".join(f'<row r="{i+1}">' + "".join(o_xml(i + 1, j, v) for j, v in enumerate(h))
+                   + "</row>" for i, h in enumerate(hang))
+    xlsx = tmp_path / "kb.xlsx"
+    with zipfile.ZipFile(xlsx, "w") as z:
+        z.writestr("xl/worksheets/sheet1.xml",
+                   '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/'
+                   f'spreadsheetml/2006/main"><sheetData>{rows}</sheetData></worksheet>')
+    out = tmp_path / "drafts"; out.mkdir(exist_ok=True)
+    cb.DRAFTS_ROOT = out
+    cb.build_from_csv(xlsx, src, voice, "T", do_write=True, **kw)
+    return json.loads((out / "T" / "draft_content.json").read_text(encoding="utf-8"))
+
+
+def test_hai_slide_lien_ke_khong_chong_lan_hinh(tmp_path, monkeypatch):
+    """Bắt lại lỗi 03/08 trên bài 2 thật: IMG01 và S6 nằm SÁT NHAU, xử lý riêng lẻ
+    thì CẢ HAI cùng đòi một khoảng tiếng giữa hai cụm clip -> cộng đôi, hình chồng
+    lấn 1,4 giây trên timeline."""
+    import shutil
+    import capcut_build as cb
+    if not shutil.which("ffmpeg"):
+        pytest.skip("máy này không có ffmpeg")
+    try:
+        cb.kiem_tra_draft_mau(cb.DONOR_VIDEO)
+    except FileNotFoundError:
+        pytest.skip("không có draft mẫu")
+    # Giả lập kết quả bóc lời: C01 đọc ở 0-3s, NGHỈ 0,5s, C02 đọc ở 3,5-6,5s.
+    # Phải đi qua đúng nhánh đồng bộ giọng thì mới chạm được logic chia slide —
+    # nhánh xếp theo cột Duration không có chỗ nào để lỗi này lộ ra.
+    def gia_asr(path, model="small"):
+        def w(t, tu):
+            return {"w": " " + tu, "s": int(t * 1000), "e": int((t + 0.9) * 1000)}
+        return [{"text": "một hai ba", "start_ms": 0, "end_ms": 3000,
+                 "words": [w(0, "một"), w(1, "hai"), w(2, "ba")]},
+                {"text": "bốn năm sáu", "start_ms": 3500, "end_ms": 6500,
+                 "words": [w(3.5, "bốn"), w(4.5, "năm"), w(5.5, "sáu")]}]
+    monkeypatch.setattr(cb, "transcribe", gia_asr)
+    goc = cb.DRAFTS_ROOT
+    try:
+        d = _dung_bai_thu(tmp_path, cb, [
+            ("STT", "Loại", "ID", "Dài (s)", "VO", "", "File ảnh cần chèn", "HD"),
+            ("1", "RENDER", "C01", "3", "một hai ba", "", "", "CÓ TIẾNG"),
+            ("2", "SLIDE", "S1", "2", "(KHÔNG LỜI)", "", "", "thẻ tĩnh"),
+            ("3", "SLIDE", "S2", "2", "(KHÔNG LỜI)", "", "", "thẻ tĩnh"),
+            ("4", "RENDER", "C02", "3", "bốn năm sáu", "", "", "CÂM HOÀN TOÀN"),
+        ])
+    finally:
+        cb.DRAFTS_ROOT = goc
+    vt = next(t for t in d["tracks"] if t["type"] == "video")
+    segs = sorted(vt["segments"], key=lambda s: s["target_timerange"]["start"])
+    for a, b in zip(segs, segs[1:]):
+        het = a["target_timerange"]["start"] + a["target_timerange"]["duration"]
+        assert abs(het - b["target_timerange"]["start"]) <= 1000, \
+            "hai slide liền kề làm hình chồng lấn/hở — mỗi khoảng tiếng chỉ được tính MỘT lần"
 
 
 def test_voice_khong_mang_metadata_nhac_online(tmp_path, monkeypatch):
