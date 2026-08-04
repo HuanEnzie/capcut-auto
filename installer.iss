@@ -13,7 +13,7 @@
 ; (chạy dong_goi.ps1 trước — installer đóng gói NGUYÊN dist\CapCutAuto\, không tự build)
 
 #define MyAppName "CapCut Auto Editor"
-#define MyAppVersion "1.0.5"
+#define MyAppVersion "1.0.6"
 #define MyAppExeName "CapCutAuto.exe"
 
 [Setup]
