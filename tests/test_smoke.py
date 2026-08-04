@@ -473,6 +473,40 @@ def test_doc_kich_ban_xls_phan_biet_clip_nhep_moi_va_cam(tmp_path):
     assert canh["S1"]["nhep_moi"] is False, "slide không có miệng nào để khớp"
 
 
+def test_doc_overlay_xls_lay_the_tieu_de_de_len_clip(tmp_path):
+    """Bài 12 có 9 ảnh slide nhưng bảng chính CHỈ dùng 2 làm đoạn riêng; 7 cái còn
+    lại là THẺ TIÊU ĐỀ đè 2 giây lên đầu clip ("KHÔNG dựng thành đoạn chữ tĩnh
+    riêng"). Bảng chính để trống cột ảnh cho các dòng đó — cặp file ↔ clip chỉ có ở
+    sheet phụ. Bỏ qua sheet phụ là mất trắng 7 thẻ chuyển khối của bài."""
+    import zipfile
+    import capcut_build as cb
+    def sheet(hang):
+        def o(r, c, v):
+            return (f'<c r="{chr(65+c)}{r}" t="inlineStr"><is><t>'
+                    f'{v.replace("&","&amp;").replace("<","&lt;")}</t></is></c>')
+        rows = "".join(f'<row r="{i+1}">' + "".join(o(i + 1, j, v) for j, v in enumerate(h))
+                       + "</row>" for i, h in enumerate(hang))
+        return ('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/'
+                f'spreadsheetml/2006/main"><sheetData>{rows}</sheetData></worksheet>')
+    xlsx = tmp_path / "b.xlsx"
+    with zipfile.ZipFile(xlsx, "w") as z:
+        z.writestr("xl/worksheets/sheet1.xml", sheet([
+            ("STT", "Loại", "ID", "Dài (s)", "VO", "", "", "HD"),
+            ("1", "RENDER", "12-03", "6", "abc", "", "", "CÂM"),
+        ]))
+        z.writestr("xl/worksheets/sheet2.xml", sheet([
+            ("File", "Nguồn", "Dùng cho"),
+            ("slides/SLIDE_03_11-bai-hoc.png", "Claude dựng",
+             "OVERLAY 2 giây lên đầu clip 12-03 — overlay lên clip mở khối"),
+            ("slides/SLIDE_01_canvas.png", "Claude dựng",
+             "Đoạn SL-01 — slide riêng, im lặng 5 giây"),
+        ]))
+    ov = cb.doc_overlay_xls(xlsx)
+    assert ov == {"12-03": ("slides/SLIDE_03_11-bai-hoc.png", 2.0)}, \
+        "chỉ lấy dòng OVERLAY, bỏ qua slide dựng thành đoạn riêng"
+    assert cb.doc_overlay_xls(tmp_path / "khong-co.csv") == {}, "CSV thì không có sheet phụ"
+
+
 def test_kho_tram_lay_dung_muc_va_khong_dung_lai(tmp_path):
     """Clip trám đánh số theo MỤC (1-x, 2-x...) vì mỗi slide đóng lại một mục —
     lấy đúng mục thì cảnh trám còn ăn nhập bối cảnh. Và không được dùng lại một

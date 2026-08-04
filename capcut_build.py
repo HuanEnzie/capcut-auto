@@ -673,6 +673,57 @@ def doc_kich_ban_xls(path) -> list:
     return canh
 
 
+def doc_overlay_xls(path) -> dict:
+    """Đọc bảng phụ 'FILE ẢNH' -> {mã clip: (tên file ảnh, số giây)}.
+
+    Bài 12 có 9 ảnh slide nhưng bảng chính CHỈ dùng 2 làm đoạn riêng; 7 cái còn lại
+    là THẺ TIÊU ĐỀ đè lên đầu clip: "OVERLAY 2 GIÂY thẻ tiêu đề ... lên ĐẦU clip
+    này — đè lên hình, không cắt clip ra" (ghi chú số 6: "KHÔNG dựng thành đoạn chữ
+    tĩnh riêng"). Bỏ qua là mất trắng 7 thẻ chuyển khối của bài — người xem không
+    còn mốc nào biết đang sang phần mới.
+
+    Bảng chính không ghi TÊN FILE cho các dòng này (cột ảnh để trống), chỉ sheet phụ
+    mới có cặp file ↔ clip. Nên phải đọc thêm sheet đó."""
+    if not str(path).lower().endswith((".xls", ".xlsx")):
+        return {}
+    import zipfile
+    import xml.etree.ElementTree as ET
+    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    try:
+        z = zipfile.ZipFile(path)
+    except OSError:
+        return {}
+    chung = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        r = ET.fromstring(z.read("xl/sharedStrings.xml"))
+        chung = ["".join(t.text or "" for t in si.iter(ns + "t")) for si in r.findall(ns + "si")]
+    ra = {}
+    for ten in ("xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml"):
+        if ten not in z.namelist():
+            continue
+        sh = ET.fromstring(z.read(ten))
+        for row in sh.iter(ns + "row"):
+            o = []
+            for cell in row.findall(ns + "c"):
+                v = cell.find(ns + "v")
+                if cell.get("t") == "s" and v is not None:
+                    txt = chung[int(v.text)] if int(v.text) < len(chung) else ""
+                else:
+                    txt = "".join(t.text or "" for t in cell.iter(ns + "t")) or (v.text if v is not None else "")
+                o.append((txt or "").strip())
+            dong = " | ".join(o)
+            if "OVERLAY" not in dong.upper():
+                continue
+            m_clip = re.search(r"clip\s+([A-Za-z0-9][\w.\-]*)", dong)
+            m_file = next((x for x in o if re.search(r"\.(png|jpg|jpeg|webp|bmp)$", x, re.I)), None)
+            if not (m_clip and m_file):
+                continue
+            m_giay = re.search(r"OVERLAY\s+([\d.,]+)\s*GI[ÂA]Y", dong, re.I)
+            giay = float((m_giay.group(1).replace(",", ".")) if m_giay else 2.0)
+            ra[m_clip.group(1)] = (m_file, giay)
+    return ra
+
+
 def doc_kich_ban(path) -> list:
     """Đọc kịch bản, tự nhận .csv hay .xls/.xlsx."""
     return (doc_kich_ban_xls(path) if str(path).lower().endswith((".xls", ".xlsx"))
@@ -911,6 +962,7 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     if not voice_path.exists():
         raise RuntimeError(f"Không thấy file voice: {voice_path}")
     canh_list = doc_kich_ban(csv_path)
+    kho_overlay = doc_overlay_xls(csv_path)
 
     thieu, nguon = [], {}
     for c in canh_list:
@@ -1096,7 +1148,8 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     vtrack["id"] = uid()
 
     def them_hinh(clip: Path, nhan: str, cat_dau: int, src_dur: int,
-                  o_bd: int, o_dai: int, speed: float, thu_tu: int):
+                  o_bd: int, o_dai: int, speed: float, thu_tu: int, track=None):
+        track = vtrack if track is None else track
         ci = probe(clip)
         seg = copy.deepcopy(seg_tpl)
         seg["id"] = uid()
@@ -1139,7 +1192,7 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             ref_ids.insert(2, tr["id"])
         seg["extra_material_refs"] = ref_ids
         seg["render_index"] = thu_tu
-        vtrack["segments"].append(seg)
+        track["segments"].append(seg)
 
     if tram_dir:
         print("  [trám] BỎ QUA thư mục trám — bản dựng chỉ dùng clip gốc và slide.")
@@ -1153,9 +1206,76 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     # 3,2s thì ngay sau đó 2-46 thừa đúng 3,2s), nên chỗ vào sớm được nuốt lại
     # ngay ở cảnh kế. Đây cũng là cách một người dựng tay làm: xê dịch điểm cắt,
     # không độn thêm gì vào giữa.
-    n_som, n_ep = 0, 0
+    # ĐỦ HÌNH KHÔNG? — đo TRƯỚC khi dựng. Nếu tổng hình (đã trừ lặng đầu) không phủ
+    # nổi phần timeline dành cho clip ngay cả khi chậm hết cỡ, thì giữ nguyên trần
+    # 0,9 sẽ để lại LỖ ĐEN ở cuối video (đo trên bài 12: hụt 7,2 giây). Thà hạ trần
+    # ĐỀU trên mọi clip xuống đúng mức vừa đủ — chậm hơn một chút ở khắp nơi, còn
+    # hơn một mảng đen ở cuối hoặc một clip phải bò ở tốc độ cực đoan.
+    dung_duoc, o_clip = {}, {}
+    for cnh, s_bd, s_kt, _ in lich:
+        p = nguon[cnh["scene"]]
+        if p.suffix.lower() in IMAGE_EXTS:
+            continue
+        ci = probe(p)
+        cd = 0
+        # CHỈ cắt lặng đầu ở clip NHÉP MÔI. Clip câm không có miệng nào để khớp nên
+        # cắt đi là vứt hình vô ích — mà hình đang là thứ thiếu nhất: đo trên bài 12,
+        # cắt tất tay làm mất 20,6 giây hình, kéo trần tốc độ tụt từ 0,79 xuống 0,71.
+        if dong_bo_voice and ci["has_audio"] and cnh.get("nhep_moi"):
+            cd = int(_diem_noi(p)[0] * 1_000_000)
+        dung_duoc[cnh["scene"]] = (ci, cd, max(1, ci["duration_us"] - cd))
+        o_clip[cnh["scene"]] = max(0.2, s_kt - s_bd)
+
     con_tro = int(round(lich[0][1] * 1_000_000)) if lich else 0
     het_timeline = int(round(lich[-1][2] * 1_000_000)) if lich else 0
+
+    def _phu_toi(san: float) -> int:
+        """Với trần tốc độ `san`, hình sẽ phủ tới giây nào? Chạy ĐÚNG công thức của
+        vòng dựng bên dưới (đã có sẵn số đo trong dung_duoc nên không tốn I/O)."""
+        ct = con_tro
+        for k, (cn, s_bd, s_kt, _) in enumerate(lich):
+            bd = ct
+            het = int(round(s_kt * 1_000_000))
+            if k == len(lich) - 1:
+                het = max(het, het_timeline)
+            muon = max(200_000, het - bd)
+            if cn["scene"] not in dung_duoc:          # slide: luôn phủ trọn ô
+                ct = bd + muon
+                continue
+            _, _, cl = dung_duoc[cn["scene"]]
+            sp = cl / muon
+            if sp < san:
+                sp, sd = san, cl
+            elif sp > TOC_NHANH_NHAT:
+                sp, sd = TOC_NHANH_NHAT, int(muon * TOC_NHANH_NHAT)
+            else:
+                sd = cl
+            ct = bd + min(int(sd / sp), muon)
+        return ct
+
+    # Tìm TRẦN CAO NHẤT (chậm ít nhất) mà vẫn phủ kín timeline. Không tính bằng một
+    # phép chia tổng hình / tổng ô: clip dư hình bị cắt ở trần nhanh 1,1 nên phần dư
+    # KHÔNG bù được cho clip khác, mà "clip nào đang thiếu" lại phụ thuộc chính cái
+    # trần đang tính — công thức đóng bị phân kỳ (thử rồi: tụt xuống 0,51 và dồn hết
+    # phần hụt vào cảnh cuối ở 0,44). Mô phỏng rồi dò nhị phân thì đúng theo định
+    # nghĩa, và rẻ vì mọi số đo đã nằm sẵn trong bộ nhớ.
+    san_toc = TOC_CHAM_NHAT
+    if _phu_toi(TOC_CHAM_NHAT) < het_timeline:
+        lo, hi = 0.2, TOC_CHAM_NHAT
+        for _ in range(24):
+            giua = (lo + hi) / 2
+            if _phu_toi(giua) >= het_timeline:
+                lo = giua
+            else:
+                hi = giua
+        san_toc = round(lo, 4)
+        thieu_giay = sum(max(0.0, o_clip[m] * TOC_CHAM_NHAT - dung_duoc[m][2] / 1e6)
+                         for m in dung_duoc)
+        print(f"  [tốc độ] ⚠️ không đủ hình để phủ hết giọng ở tốc độ {TOC_CHAM_NHAT} — "
+              f"hạ trần ĐỀU xuống {san_toc} để không hở hình. Muốn giữ {TOC_CHAM_NHAT} "
+              f"thì các clip cần dài thêm tổng ~{thieu_giay:.0f}s.")
+
+    n_som, n_ep = 0, 0
     for i, (cnh, sec_bd, sec_kt, ty_le) in enumerate(lich):
         la_slide = cnh.get("loai", "render") == "slide"
         o_bd = con_tro
@@ -1179,21 +1299,16 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             con_tro = o_bd + o_dai_muon
             continue
 
-        ci = probe(goc)
         # Cắt bỏ khoảng LẶNG ĐẦU của clip rồi mới kéo giãn: phần còn lại (từ lúc
         # miệng bắt đầu mấp máy) trải đúng vào ô thời gian mà giọng thật đang đọc
         # cảnh này -> khẩu hình bám giọng. Xem _diem_noi() cho số đo thật.
-        cat_dau = 0
-        if dong_bo_voice and ci["has_audio"] and not la_slide:
-            noi_bd, _ = _diem_noi(goc)
-            cat_dau = int(noi_bd * 1_000_000)
-        con_lai = max(1, ci["duration_us"] - cat_dau)
+        ci, cat_dau, con_lai = dung_duoc[cnh["scene"]]
         speed = con_lai / o_dai_muon
 
-        if speed < TOC_CHAM_NHAT:
+        if speed < san_toc:
             # Kéo giãn quá tay là video GIẬT LAG (người dùng báo, có clip từng
             # xuống 0,38). Dừng ở trần rồi để clip SAU vào sớm bù chỗ còn lại.
-            speed, src_dur = TOC_CHAM_NHAT, con_lai
+            speed, src_dur = san_toc, con_lai
             n_ep += 1
         elif speed > TOC_NHANH_NHAT:
             # Clip dài hơn ô -> cắt bớt đuôi thay vì tua nhanh quá đà.
@@ -1201,13 +1316,51 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         else:
             src_dur = con_lai
         o_dai = min(int(src_dur / speed), o_dai_muon)
+        if i == len(lich) - 1 and o_bd + o_dai < het_timeline:
+            # CHỐT CHẶN CUỐI: trần tốc độ tính theo TỔNG hình, nhưng clip nào dài quá
+            # thì bị cắt ở trần nhanh 1,1 nên phần dôi của nó không dùng được — tổng
+            # vẫn có thể hụt vài giây ở đuôi. Thà kéo riêng cảnh cuối chậm thêm còn
+            # hơn để video hết hình trong khi giọng vẫn đang đọc.
+            o_dai = het_timeline - o_bd
+            speed = max(0.1, src_dur / o_dai)
+            print(f"  [tốc độ] cảnh cuối kéo tới hết timeline, tốc độ {speed:.3f} "
+                  f"(để không hết hình trước khi hết tiếng)")
         them_hinh(goc, f"{cnh['scene']} — {goc.stem}", cat_dau, src_dur,
                   o_bd, o_dai, round(speed, 6), i)
         con_tro = o_bd + o_dai
     if n_ep or n_som:
-        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {TOC_CHAM_NHAT}; "
+        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {san_toc}; "
               f"{n_som} clip vào sớm để lấp chỗ hụt (không chèn gì thêm)")
     c["tracks"].append(vtrack)
+
+    # ---- TRACK OVERLAY: thẻ tiêu đề đè lên đầu clip ----
+    # Track thứ hai nằm SAU trong mảng tracks nên CapCut vẽ đè lên track hình chính,
+    # đúng yêu cầu "đè lên hình, không cắt clip ra". Clip bên dưới vẫn chạy tiếp.
+    if kho_overlay:
+        moc_clip = {x[0]["scene"]: x[1] for x in lich}
+        ov_segs, thieu_ov = [], []
+        for ma, (ten_anh, giay) in sorted(kho_overlay.items()):
+            if ma not in moc_clip:
+                continue
+            p = tim_nguon_canh(ma, source_dir, ten_anh)
+            if p is None or p.suffix.lower() not in IMAGE_EXTS:
+                thieu_ov.append(f"{ma}<-{ten_anh}")
+                continue
+            clip = _anh_thanh_clip_tinh(p, giay, cache_dir)
+            ci = probe(clip)
+            dai = min(ci["duration_us"], int(giay * 1_000_000))
+            ov_segs.append((int(round(moc_clip[ma] * 1_000_000)), dai, clip, ma, p))
+        if thieu_ov:
+            print(f"  [overlay] ⚠️ không thấy ảnh cho: {', '.join(thieu_ov)}")
+        if ov_segs:
+            otrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in vtrack_src.items()}
+            otrack["id"] = uid()
+            for j, (bd, dai, clip, ma, p) in enumerate(ov_segs):
+                them_hinh(clip, f"overlay {ma} — {p.stem}", 0, dai, bd, dai, 1.0, j,
+                          track=otrack)
+            c["tracks"].append(otrack)
+            print(f"  [overlay] chèn {len(ov_segs)} thẻ tiêu đề đè lên đầu clip "
+                  f"({', '.join(x[3] for x in ov_segs)})")
 
     # BẢNG ĐỘ DÀI ĐO ĐƯỢC — thứ đáng giá nhất để lần sau khỏi phải đứng hình:
     # clip AI đang ngắn hơn giọng đọc thật, mà cột Duration trong kịch bản lại là
