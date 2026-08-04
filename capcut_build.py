@@ -1141,29 +1141,42 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         seg["render_index"] = thu_tu
         vtrack["segments"].append(seg)
 
-    kho_tram = _doc_kho_tram(tram_dir)
-    if kho_tram:
-        print(f"  [trám] có {sum(len(v) for v in kho_tram.values())} clip trám "
-              f"trong {len(kho_tram)} mục — dùng thay chỗ đứng hình")
-    da_dung_tram, muc_hien_tai = set(), 0
-    n_giu, n_ep, n_tram = 0, 0, 0
+    if tram_dir:
+        print("  [trám] BỎ QUA thư mục trám — bản dựng chỉ dùng clip gốc và slide.")
+    # MỘT DÒNG = ĐÚNG MỘT SEGMENT HÌNH. Không chèn khung đứng, không chèn clip lạ —
+    # người dùng chốt: chỉ thuần clip gốc và slide.
+    #
+    # Hệ quả phải xử lý: clip nào ngắn hơn ô thời gian của nó (kể cả đã chậm tới
+    # trần 0,9) thì KHÔNG có gì bù vào. Cách giải: chạy theo CON TRỎ liên tục —
+    # clip sau bắt đầu ngay chỗ clip trước dừng, tức là VÀO SỚM một chút. Làm được
+    # vì phần lớn clip đang THỪA hình so với ô của nó (đo trên bài 2: 2-45 hụt
+    # 3,2s thì ngay sau đó 2-46 thừa đúng 3,2s), nên chỗ vào sớm được nuốt lại
+    # ngay ở cảnh kế. Đây cũng là cách một người dựng tay làm: xê dịch điểm cắt,
+    # không độn thêm gì vào giữa.
+    n_som, n_ep = 0, 0
+    con_tro = int(round(lich[0][1] * 1_000_000)) if lich else 0
+    het_timeline = int(round(lich[-1][2] * 1_000_000)) if lich else 0
     for i, (cnh, sec_bd, sec_kt, ty_le) in enumerate(lich):
         la_slide = cnh.get("loai", "render") == "slide"
-        if la_slide:
-            # Mỗi slide đóng lại một mục; clip trám đánh số theo mục (1-x, 2-x...).
-            muc_hien_tai += 1
-        o_bd = int(round(sec_bd * 1_000_000))
-        o_dai = max(200_000, int(round((sec_kt - sec_bd) * 1_000_000)))
+        o_bd = con_tro
+        o_het = int(round(sec_kt * 1_000_000))
+        if i == len(lich) - 1:
+            o_het = max(o_het, het_timeline)
+        o_dai_muon = max(200_000, o_het - o_bd)
+        # Con trỏ tụt lại sau mốc giọng đọc nghĩa là clip trước hụt hình -> cảnh này
+        # phải vào SỚM để lấp. Đếm lại để báo đúng, và để biết mức xê dịch điểm cắt.
+        if o_bd < int(round(sec_bd * 1_000_000)) - 40_000:
+            n_som += 1
         goc = nguon[cnh["scene"]]
 
         if goc.suffix.lower() in IMAGE_EXTS:
-            # Ảnh (slide) — dựng clip tĩnh đúng bằng ô thời gian THẬT vừa tính từ
-            # giọng đọc, không phải con số 3 giây trong bảng. Ảnh đứng yên nên
-            # không có chuyện giật hình, cứ để tốc độ thường.
-            clip = _anh_thanh_clip_tinh(goc, o_dai / 1e6, cache_dir)
+            # Ảnh (slide) — dựng clip tĩnh đúng bằng ô thời gian THẬT. Ảnh đứng yên
+            # nên không có chuyện giật hình, cứ để tốc độ thường.
+            clip = _anh_thanh_clip_tinh(goc, o_dai_muon / 1e6, cache_dir)
             ci = probe(clip)
             them_hinh(clip, f"{cnh['scene']} — {goc.stem}", 0,
-                      min(ci["duration_us"], o_dai), o_bd, o_dai, 1.0, i)
+                      min(ci["duration_us"], o_dai_muon), o_bd, o_dai_muon, 1.0, i)
+            con_tro = o_bd + o_dai_muon
             continue
 
         ci = probe(goc)
@@ -1175,45 +1188,25 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             noi_bd, _ = _diem_noi(goc)
             cat_dau = int(noi_bd * 1_000_000)
         con_lai = max(1, ci["duration_us"] - cat_dau)
-        speed = con_lai / o_dai                 # tốc độ để clip trải vừa đúng ô
+        speed = con_lai / o_dai_muon
 
         if speed < TOC_CHAM_NHAT:
-            # Giọng đọc dài hơn clip nhiều -> kéo giãn quá tay là video GIẬT LAG
-            # (người dùng thật báo, có clip xuống tới 0,38). Chỉ chậm tới mức trần
-            # rồi GIỮ KHUNG CUỐI cho hết ô — đứng hình vẫn hơn giật hình.
+            # Kéo giãn quá tay là video GIẬT LAG (người dùng báo, có clip từng
+            # xuống 0,38). Dừng ở trần rồi để clip SAU vào sớm bù chỗ còn lại.
             speed, src_dur = TOC_CHAM_NHAT, con_lai
             n_ep += 1
         elif speed > TOC_NHANH_NHAT:
             # Clip dài hơn ô -> cắt bớt đuôi thay vì tua nhanh quá đà.
-            speed, src_dur = TOC_NHANH_NHAT, int(o_dai * TOC_NHANH_NHAT)
+            speed, src_dur = TOC_NHANH_NHAT, int(o_dai_muon * TOC_NHANH_NHAT)
         else:
             src_dur = con_lai
-        phu = int(src_dur / speed)              # ô thời gian mà phần hình phủ được
-        phu = min(phu, o_dai)
+        o_dai = min(int(src_dur / speed), o_dai_muon)
         them_hinh(goc, f"{cnh['scene']} — {goc.stem}", cat_dau, src_dur,
-                  o_bd, phu, round(speed, 6), i)
-
-        con_ho = o_dai - phu
-        if con_ho > 40_000:                     # >0,04s mới đáng bù, dưới nữa là làm tròn
-            # ƯU TIÊN CLIP TRÁM (B-roll người dùng chuẩn bị sẵn trong 'trám (opt)')
-            # hơn là đứng hình: hình vẫn chuyển động, nhìn như dựng tay. Chỉ khi
-            # hết clip trám cùng mục mới quay về giữ khung cuối.
-            tr_clip = _lay_clip_tram(kho_tram, muc_hien_tai, con_ho, da_dung_tram)
-            if tr_clip is not None:
-                ti = probe(tr_clip)
-                them_hinh(tr_clip, f"{cnh['scene']} — trám {tr_clip.stem}", 0,
-                          min(ti["duration_us"], con_ho), o_bd + phu, con_ho, 1.0, i)
-                n_tram += 1
-            else:
-                png = _khung_cuoi(goc, (cat_dau + src_dur) / 1e6, cache_dir)
-                giu = _anh_thanh_clip_tinh(png, con_ho / 1e6, cache_dir)
-                gi = probe(giu)
-                them_hinh(giu, f"{cnh['scene']} — giữ khung cuối", 0,
-                          min(gi["duration_us"], con_ho), o_bd + phu, con_ho, 1.0, i)
-                n_giu += 1
-    if n_ep:
-        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {TOC_CHAM_NHAT} -> bù "
-              f"{n_tram} chỗ bằng clip trám, {n_giu} chỗ bằng giữ khung cuối")
+                  o_bd, o_dai, round(speed, 6), i)
+        con_tro = o_bd + o_dai
+    if n_ep or n_som:
+        print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {TOC_CHAM_NHAT}; "
+              f"{n_som} clip vào sớm để lấp chỗ hụt (không chèn gì thêm)")
     c["tracks"].append(vtrack)
 
     # BẢNG ĐỘ DÀI ĐO ĐƯỢC — thứ đáng giá nhất để lần sau khỏi phải đứng hình:

@@ -28,6 +28,13 @@ QUY_TRINH = [
         "san_sang": True,
     },
     {
+        "ma": "eq_gym",
+        "ten": "EQ Gym AI Editor",
+        "mo_ta": "Kịch bản có sẵn (bảng lưu ý CapCut) + thư mục clip/slide + 1 file giọng đọc → ráp thành dự án CapCut.",
+        "icon": "🏋️",
+        "san_sang": True,
+    },
+    {
         "ma": "koc_ai",
         "ten": "KOC AI Editor",
         "mo_ta": "Video KOC/review sản phẩm: bám kịch bản, chèn cảnh sản phẩm đúng nhịp.",
@@ -70,8 +77,20 @@ LOP_MAC_DINH = {
 }
 
 
+# Quy trình EQ Gym cần BA đường dẫn, không phải một file record như quy trình cũ.
+# Để trong cau_hinh (JSON) thay vì thêm cột: mỗi quy trình sau này lại cần bộ tham
+# số khác nhau, thêm cột cho từng cái là bảng phình mãi không dừng.
+EQGYM_MAC_DINH = {
+    "kich_ban": "",      # bảng lưu ý CapCut (.xlsx/.xls) hoặc CSV kịch bản
+    "nguon": "",         # thư mục chứa clip + slide (tìm cả thư mục con)
+    "voice": "",         # MỘT file giọng đọc cho cả bài
+    "tu_dong_can": True,  # bóc lời rồi căn từng cảnh vào giọng; tắt = xếp theo thứ tự
+}
+
+
 def cau_hinh_mac_dinh() -> dict:
-    return {"lop": dict(LOP_MAC_DINH), "chon": {"sfx": [], "sticker": [], "font": []}}
+    return {"lop": dict(LOP_MAC_DINH), "chon": {"sfx": [], "sticker": [], "font": []},
+            "eqgym": dict(EQGYM_MAC_DINH)}
 
 
 def _chuan_hoa(c) -> dict:
@@ -86,7 +105,11 @@ def _chuan_hoa(c) -> dict:
         v = (c.get("chon") or {}).get(k)
         if isinstance(v, list):
             chon[k] = [str(x) for x in v]
-    return {"lop": lop, "chon": chon}
+    eq = dict(goc["eqgym"])
+    for k, v in (c.get("eqgym") or {}).items():
+        if k in eq:
+            eq[k] = bool(v) if isinstance(eq[k], bool) else str(v)
+    return {"lop": lop, "chon": chon, "eqgym": eq}
 
 
 # ─────────────────── CRUD ───────────────────

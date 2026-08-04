@@ -5,7 +5,7 @@ kho tài nguyên tiến hoá theo gu, cân bằng âm thanh.
   set GEMINI_API_KEY=... & set PEXELS_API_KEY=... & python app.py
   -> http://127.0.0.1:8765
 """
-import contextlib, io, json, os, subprocess, sys, threading, time
+import contextlib, io, json, os, re, subprocess, sys, threading, time
 from pathlib import Path
 
 # Console Windows mặc định hay là cp1252: chỉ một dòng log tiếng Việt lọt ra stdout
@@ -468,6 +468,42 @@ def api_transcript_lam_sach(pid: int, model: str = MODEL_CO_HOC):
     return {"job": run_job(f"Làm sạch lời thoại · {p['ten']}", run)}
 
 
+@app.post("/api/app-projects/{pid}/eqgym/build")
+def api_eqgym_build(pid: int, ten_draft: str = ""):
+    """Dựng draft CapCut cho quy trình EQ Gym từ 3 đường dẫn đã lưu trong dự án.
+
+    Khác luồng Record AI Editor hoàn toàn: không bóc chủ đề, không chấm điểm — kịch
+    bản đã chốt sẵn, việc của app là ráp đúng thứ tự và (nếu bật) căn từng cảnh vào
+    giọng đọc."""
+    p = projects.lay(pid)
+    if not p:
+        raise HTTPException(404, "không thấy dự án")
+    eq = (p.get("cau_hinh") or {}).get("eqgym") or {}
+    thieu = [ten for khoa, ten in (("kich_ban", "bảng kịch bản"), ("nguon", "thư mục nguồn"),
+                                   ("voice", "file giọng đọc")) if not eq.get(khoa)]
+    if thieu:
+        raise HTTPException(400, "Chưa chọn " + ", ".join(thieu))
+    for khoa, mo_ta in (("kich_ban", "Bảng kịch bản"), ("voice", "File giọng đọc")):
+        if not Path(eq[khoa]).is_file():
+            raise HTTPException(404, f"{mo_ta} không còn ở đường dẫn cũ: {eq[khoa]}")
+    if not Path(eq["nguon"]).is_dir():
+        raise HTTPException(404, f"Thư mục nguồn không còn: {eq['nguon']}")
+
+    ten = (ten_draft or "").strip() or f"EQGYM_{Path(eq['kich_ban']).stem}"[:60]
+    ten = re.sub(r'[<>:"/\\|?*]', "_", ten)     # tên draft là TÊN THƯ MỤC trên đĩa
+    if (DRAFT_ROOT / ten).exists():
+        raise HTTPException(409, f"Draft '{ten}' đã tồn tại — đổi tên khác hoặc xoá bản cũ.")
+
+    def run(log):
+        import capcut_build as cb
+        with contextlib.redirect_stdout(LogWriter(log)):
+            return cb.build_from_csv(eq["kich_ban"], eq["nguon"], eq["voice"], ten,
+                                     do_write=True,
+                                     dong_bo_voice=bool(eq.get("tu_dong_can", True)))
+
+    return {"job": run_job(f"Dựng EQ Gym · {ten}", run), "draft": ten}
+
+
 @app.post("/api/app-projects/{pid}/record")
 def api_app_project_gan_record(pid: int, path: str):
     """Gắn file record vào dự án. CHỈ LÀM ĐƯỢC MỘT LẦN.
@@ -642,7 +678,15 @@ def _chon_bang_tkinter(kieu: str) -> str:
     from tkinter import filedialog
     r = tk.Tk(); r.withdraw(); r.attributes("-topmost", True)
     if kieu == "thu_muc":
-        p = filedialog.askdirectory(title="Chọn thư mục chứa record")
+        p = filedialog.askdirectory(title="Chọn thư mục")
+    elif kieu == "kich_ban":
+        p = filedialog.askopenfilename(
+            title="Chọn bảng lưu ý CapCut / kịch bản",
+            filetypes=[("Bảng kịch bản", "*.xlsx *.xls *.csv"), ("Tất cả", "*.*")])
+    elif kieu == "voice":
+        p = filedialog.askopenfilename(
+            title="Chọn file giọng đọc",
+            filetypes=[("Âm thanh", "*.mp3 *.wav *.m4a *.aac *.flac *.ogg"), ("Tất cả", "*.*")])
     else:
         p = filedialog.askopenfilename(
             title="Chọn file record",
@@ -665,8 +709,8 @@ def api_pick(kieu: str = "thu_muc"):
     cờ `-c` — gọi kiểu đó vô tình mở thêm một bản app thứ hai, bản đó in dòng chào
     "App: http://127.0.0.1:8765" rồi chết vì cổng 8765 đã bị chiếm, và dòng đó bị
     nhặt nhầm làm đường dẫn vừa chọn. Bắt bởi người dùng thật, không phải đoán."""
-    if kieu not in ("thu_muc", "file"):
-        raise HTTPException(400, "kieu phải là 'thu_muc' hoặc 'file'")
+    if kieu not in ("thu_muc", "file", "kich_ban", "voice"):
+        raise HTTPException(400, "kieu không hợp lệ")
     lenh = [sys.executable] + ([] if getattr(sys, "frozen", False) else [__file__]) + ["--pick", kieu]
     try:
         r = subprocess.run(lenh, capture_output=True, text=True, timeout=300)

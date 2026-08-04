@@ -1255,6 +1255,11 @@ async function loadWork(){
   const [p, ed] = await Promise.all([api('/api/app-projects/'+PROJ_ID), api('/api/editors')]);
   PROJ = p;
   $('#pgTitle').textContent = p.ten;
+  /* Quy trình EQ Gym ăn BA đường dẫn (kịch bản + thư mục nguồn + giọng đọc) và ra
+     THẲNG một draft — không có bước bóc chủ đề, không có gu editor, không có kho
+     tài nguyên. Dùng chung màn hình với Record AI Editor thì 3/4 màn là nút không
+     bấm được, nên tách hẳn một màn riêng. */
+  if(p.quy_trinh === 'eq_gym'){ veManEqGym(box, p); return; }
   $('#pgSub').textContent = `${p.quy_trinh_ten} · ${p.work_dir ? p.work_dir : 'chưa gắn record'}`;
   const curEd = PREF.get('editor', ''), curAsr = PREF.get('asr', 'small');
   const opt = (v, label, sel) => `<option value="${esc(v)}" ${v===sel?'selected':''}>${esc(label)}</option>`;
@@ -1402,6 +1407,117 @@ async function loadWork(){
   TOPIC_TRANG = 0;
   veChuDe();
   pollJobs();
+}
+
+/* ══════════════════ MÀN HÌNH EQ GYM AI EDITOR ══════════════════
+   Ba đường dẫn + một tích chọn + một nút. Cố tình KHÔNG có gì khác: kịch bản đã
+   chốt sẵn từ bên ngoài, app chỉ ráp lại — thêm nút nào cũng là thêm chỗ để bấm
+   nhầm. */
+function veManEqGym(box, p){
+  const eq = (p.cau_hinh && p.cau_hinh.eqgym) || {};
+  $('#pgSub').textContent = `${p.quy_trinh_ten} · ráp kịch bản có sẵn thành dự án CapCut`;
+  const o = (k, v) => `<div class="row" style="margin:0 0 10px">
+      <label class="fld" style="flex:1;min-width:280px"><span>${k}</span>
+        <input id="eq_${v}" value="${esc(eq[v]||'')}" placeholder="chưa chọn" readonly
+               style="cursor:default"></label>
+      <label class="fld"><span>&nbsp;</span>
+        <button class="btn ghost" data-act="eq-pick" data-k="${v}">Chọn…</button></label>
+    </div>`;
+  box.innerHTML = `
+    <div class="workbar">
+      <a class="link small" data-act="ve-home">← Về Home</a>
+      <span class="muted small">${esc(p.quy_trinh_ten)}</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn ghost sm" data-act="rename-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Đổi tên</button>
+        <button class="btn danger sm" data-act="del-proj" data-id="${p.id}" data-ten="${esc(p.ten)}">Xoá dự án</button>
+      </span>
+    </div>
+
+    <div class="secthead"><div>
+      <h2 style="margin:0">Nguồn</h2>
+      <p class="muted small" style="margin:4px 0 0">Bảng lưu ý CapCut quyết định thứ tự và
+        thời lượng từng cảnh; thư mục nguồn chứa clip + slide (tìm cả thư mục con).</p>
+    </div></div>
+    <div class="card">
+      ${o('Bảng kịch bản (.xlsx / .csv)', 'kich_ban')}
+      ${o('Thư mục nguồn (clip + slide)', 'nguon')}
+      ${o('File giọng đọc (1 file cho cả bài)', 'voice')}
+    </div>
+
+    <div class="secthead" style="margin-top:var(--spacing-24)"><h2 style="margin:0">Cách ráp</h2></div>
+    <div class="card">
+      <label class="lop" style="cursor:pointer;display:flex;gap:10px;align-items:flex-start">
+        <input type="checkbox" id="eqCan" ${eq.tu_dong_can===false?'':'checked'} style="margin-top:3px">
+        <span><b>Tự động căn source theo giọng đọc</b>
+          <div class="l" style="margin-top:4px">Bóc lời file giọng đọc rồi tìm mỗi cảnh
+            được đọc ở giây nào, cắt tiếng theo từng cảnh và co giãn clip cho khẩu hình
+            bám giọng. Chậm hơn (phải bóc lời) nhưng hình và tiếng khớp nhau.</div>
+          <div class="l" style="margin-top:6px">Bỏ tích: <b>chỉ import theo đúng thứ tự</b>
+            trong bảng, mỗi cảnh dài đúng cột "Dài (s)". Nhanh, không cần bóc lời —
+            hình và tiếng có thể lệch nhau.</div></span>
+      </label>
+    </div>
+
+    <div class="secthead" style="margin-top:var(--spacing-24)"><h2 style="margin:0">Dựng draft</h2></div>
+    <div class="card">
+      <div class="row" style="margin:0">
+        <label class="fld" style="flex:1;min-width:240px"><span>Tên draft CapCut</span>
+          <input id="eqTen" placeholder="để trống thì lấy theo tên bảng kịch bản"></label>
+        <label class="fld"><span>&nbsp;</span>
+          <button class="btn" id="btnEqBuild">Dựng draft</button></label>
+      </div>
+      <p class="muted small" style="margin:10px 0 0">Đóng CapCut trước khi dựng cho chắc.
+        Draft trùng tên sẽ bị từ chối chứ không ghi đè.</p>
+    </div>
+
+    <div class="secthead" style="margin-top:var(--spacing-32)"><h2 style="margin:0">Tiến trình</h2></div>
+    <div class="jobsBox"></div>`;
+  $('#eqCan').onchange = () => luuEqGym();
+  $('#btnEqBuild').onclick = e => dungEqGym(e.currentTarget);
+  pollJobs();
+}
+
+async function luuEqGym(){
+  const eq = {
+    kich_ban: $('#eq_kich_ban').value, nguon: $('#eq_nguon').value,
+    voice: $('#eq_voice').value, tu_dong_can: $('#eqCan').checked,
+  };
+  const c = Object.assign({}, PROJ.cau_hinh, {eqgym: eq});
+  try{
+    PROJ = await api(`/api/app-projects/${PROJ_ID}`, {method:'PATCH',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({cau_hinh: c})});
+  }catch(e){ toast(String(e), true); }
+}
+
+/* Mỗi ô một kiểu hộp thoại riêng: chọn thư mục cho nguồn, lọc .xlsx/.csv cho kịch
+   bản, lọc file tiếng cho giọng đọc — đỡ phải lội giữa hàng trăm file không liên quan. */
+ACTIONS['eq-pick'] = async (d, el) => busy(el, 'Đang mở…', async () => {
+  const kieu = d.k === 'nguon' ? 'thu_muc' : (d.k === 'voice' ? 'voice' : 'kich_ban');
+  try{
+    const r = await api(`/api/pick?kieu=${kieu}`, {method:'POST'});
+    if(r.huy) return;
+    $('#eq_' + d.k).value = r.path;
+    await luuEqGym();
+  }catch(e){ toast(String(e), true); }
+});
+
+async function dungEqGym(btn){
+  const thieu = ['kich_ban','nguon','voice'].filter(k => !$('#eq_'+k).value.trim());
+  if(thieu.length) return toast('Chưa chọn đủ nguồn (bảng kịch bản, thư mục, giọng đọc)', true);
+  await luuEqGym();
+  const can = $('#eqCan').checked;
+  if(!await confirmBox('Dựng draft EQ Gym?',
+      (can ? 'CÓ căn source theo giọng đọc — phải bóc lời, mất vài phút.'
+           : 'KHÔNG căn source — chỉ import theo thứ tự trong bảng, chạy nhanh.')
+      + '\n\nĐóng CapCut trước cho chắc.')) return;
+  await busy(btn, 'Đang gửi…', async () => {
+    try{
+      const ten = encodeURIComponent($('#eqTen').value.trim());
+      const r = await api(`/api/app-projects/${PROJ_ID}/eqgym/build?ten_draft=${ten}`, {method:'POST'});
+      askNotify();
+      moTienTrinhModal(r.job, `Đang dựng · ${r.draft}`);
+    }catch(e){ toast(String(e), true); }
+  });
 }
 
 /* ---------- Lưới chủ đề + phân trang ----------
