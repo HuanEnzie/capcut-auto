@@ -473,7 +473,7 @@ def test_doc_kich_ban_xls_phan_biet_clip_nhep_moi_va_cam(tmp_path):
     assert canh["S1"]["nhep_moi"] is False, "slide không có miệng nào để khớp"
 
 
-def test_doc_overlay_xls_lay_the_tieu_de_de_len_clip(tmp_path):
+def test_doc_the_tieu_de_xls_lay_the_tieu_de_de_len_clip(tmp_path):
     """Bài 12 có 9 ảnh slide nhưng bảng chính CHỈ dùng 2 làm đoạn riêng; 7 cái còn
     lại là THẺ TIÊU ĐỀ đè 2 giây lên đầu clip ("KHÔNG dựng thành đoạn chữ tĩnh
     riêng"). Bảng chính để trống cột ảnh cho các dòng đó — cặp file ↔ clip chỉ có ở
@@ -501,10 +501,10 @@ def test_doc_overlay_xls_lay_the_tieu_de_de_len_clip(tmp_path):
             ("slides/SLIDE_01_canvas.png", "Claude dựng",
              "Đoạn SL-01 — slide riêng, im lặng 5 giây"),
         ]))
-    ov = cb.doc_overlay_xls(xlsx)
+    ov = cb.doc_the_tieu_de_xls(xlsx)
     assert ov == {"12-03": ("slides/SLIDE_03_11-bai-hoc.png", 2.0)}, \
-        "chỉ lấy dòng OVERLAY, bỏ qua slide dựng thành đoạn riêng"
-    assert cb.doc_overlay_xls(tmp_path / "khong-co.csv") == {}, "CSV thì không có sheet phụ"
+        "chỉ lấy dòng thẻ tiêu đề, bỏ qua slide đã có dòng riêng trong bảng chính"
+    assert cb.doc_the_tieu_de_xls(tmp_path / "khong-co.csv") == {}, "CSV thì không có sheet phụ"
 
 
 def test_kho_tram_lay_dung_muc_va_khong_dung_lai(tmp_path):

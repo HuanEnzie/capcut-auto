@@ -673,17 +673,20 @@ def doc_kich_ban_xls(path) -> list:
     return canh
 
 
-def doc_overlay_xls(path) -> dict:
+def doc_the_tieu_de_xls(path) -> dict:
     """Đọc bảng phụ 'FILE ẢNH' -> {mã clip: (tên file ảnh, số giây)}.
 
     Bài 12 có 9 ảnh slide nhưng bảng chính CHỈ dùng 2 làm đoạn riêng; 7 cái còn lại
-    là THẺ TIÊU ĐỀ đè lên đầu clip: "OVERLAY 2 GIÂY thẻ tiêu đề ... lên ĐẦU clip
-    này — đè lên hình, không cắt clip ra" (ghi chú số 6: "KHÔNG dựng thành đoạn chữ
-    tĩnh riêng"). Bỏ qua là mất trắng 7 thẻ chuyển khối của bài — người xem không
-    còn mốc nào biết đang sang phần mới.
+    là THẺ TIÊU ĐỀ gắn với một clip cụ thể. Bỏ qua là mất trắng 7 thẻ chuyển khối
+    của bài — người xem không còn mốc nào biết đang sang phần mới.
 
     Bảng chính không ghi TÊN FILE cho các dòng này (cột ảnh để trống), chỉ sheet phụ
-    mới có cặp file ↔ clip. Nên phải đọc thêm sheet đó."""
+    mới có cặp file ↔ clip. Nên phải đọc thêm sheet đó.
+
+    LƯU Ý — bảng ghi các thẻ này là "OVERLAY ... đè lên hình, không cắt clip ra" và
+    "KHÔNG dựng thành đoạn chữ tĩnh riêng". NGƯỜI DÙNG XÁC NHẬN GHI CHÚ ĐÓ SAI: thẻ
+    nằm NGAY TRƯỚC clip như một đoạn riêng, không đè lên video. Giữ lại chữ OVERLAY
+    khi dò vì đó vẫn là từ khoá nhận dạng dòng trong bảng."""
     if not str(path).lower().endswith((".xls", ".xlsx")):
         return {}
     import zipfile
@@ -962,7 +965,22 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
     if not voice_path.exists():
         raise RuntimeError(f"Không thấy file voice: {voice_path}")
     canh_list = doc_kich_ban(csv_path)
-    kho_overlay = doc_overlay_xls(csv_path)
+    # Thẻ tiêu đề: chèn thành DÒNG SLIDE RIÊNG ngay trước clip tương ứng, đi chung
+    # một đường với các slide có sẵn trong bảng (SL-01, SL-02) — cùng là ảnh tĩnh
+    # chiếm chỗ trên timeline, không có lý do gì xử lý bằng hai cơ chế khác nhau.
+    the_td = doc_the_tieu_de_xls(csv_path)
+    if the_td:
+        moi = []
+        for c in canh_list:
+            if c["scene"] in the_td:
+                ten_anh, giay = the_td[c["scene"]]
+                moi.append({"scene": f"TD-{c['scene']}", "loai": "slide",
+                            "duration_s": giay, "vo": "", "anh": ten_anh,
+                            "nhep_moi": False})
+            moi.append(c)
+        canh_list = moi
+        print(f"  [thẻ tiêu đề] chèn {len(the_td)} thẻ ngay TRƯỚC clip: "
+              f"{', '.join(sorted(the_td))}")
 
     thieu, nguon = [], {}
     for c in canh_list:
@@ -1332,35 +1350,6 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
         print(f"  [tốc độ] {n_ep} clip chạm trần chậm nhất {san_toc}; "
               f"{n_som} clip vào sớm để lấp chỗ hụt (không chèn gì thêm)")
     c["tracks"].append(vtrack)
-
-    # ---- TRACK OVERLAY: thẻ tiêu đề đè lên đầu clip ----
-    # Track thứ hai nằm SAU trong mảng tracks nên CapCut vẽ đè lên track hình chính,
-    # đúng yêu cầu "đè lên hình, không cắt clip ra". Clip bên dưới vẫn chạy tiếp.
-    if kho_overlay:
-        moc_clip = {x[0]["scene"]: x[1] for x in lich}
-        ov_segs, thieu_ov = [], []
-        for ma, (ten_anh, giay) in sorted(kho_overlay.items()):
-            if ma not in moc_clip:
-                continue
-            p = tim_nguon_canh(ma, source_dir, ten_anh)
-            if p is None or p.suffix.lower() not in IMAGE_EXTS:
-                thieu_ov.append(f"{ma}<-{ten_anh}")
-                continue
-            clip = _anh_thanh_clip_tinh(p, giay, cache_dir)
-            ci = probe(clip)
-            dai = min(ci["duration_us"], int(giay * 1_000_000))
-            ov_segs.append((int(round(moc_clip[ma] * 1_000_000)), dai, clip, ma, p))
-        if thieu_ov:
-            print(f"  [overlay] ⚠️ không thấy ảnh cho: {', '.join(thieu_ov)}")
-        if ov_segs:
-            otrack = {k: (copy.deepcopy(v) if k != "segments" else []) for k, v in vtrack_src.items()}
-            otrack["id"] = uid()
-            for j, (bd, dai, clip, ma, p) in enumerate(ov_segs):
-                them_hinh(clip, f"overlay {ma} — {p.stem}", 0, dai, bd, dai, 1.0, j,
-                          track=otrack)
-            c["tracks"].append(otrack)
-            print(f"  [overlay] chèn {len(ov_segs)} thẻ tiêu đề đè lên đầu clip "
-                  f"({', '.join(x[3] for x in ov_segs)})")
 
     # BẢNG ĐỘ DÀI ĐO ĐƯỢC — thứ đáng giá nhất để lần sau khỏi phải đứng hình:
     # clip AI đang ngắn hơn giọng đọc thật, mà cột Duration trong kịch bản lại là
