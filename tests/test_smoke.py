@@ -473,6 +473,49 @@ def test_doc_kich_ban_xls_phan_biet_clip_nhep_moi_va_cam(tmp_path):
     assert canh["S1"]["nhep_moi"] is False, "slide không có miệng nào để khớp"
 
 
+def test_doc_kich_ban_nhan_du_bon_loai_hang_bai13(tmp_path):
+    """Bảng bài 13 có BỐN loại hàng: RENDER (AI render) · HTML (clip đồ hoạ dựng
+    sẵn) · CARD (thẻ chuyển mục 2,2s) · ANH (ảnh docx). Phân xử bằng CÓ LỜI HAY
+    KHÔNG chứ không bằng tên loại, để thêm loại mới sau này khỏi phải sửa.
+
+    Cột 'File nguồn' của hàng RENDER ghi tên file CSV sinh ra clip
+    ('bai11_video_v2.csv') — đó là nguồn TẠO, không phải file để nhập vào timeline;
+    lấy nhầm là đi tìm một file không bao giờ có."""
+    import zipfile
+    import capcut_build as cb
+    hang = [
+        ("STT", "Loại", "ID", "Dài (s)", "VO", "Màn hình", "File nguồn", "HD"),
+        ("1", "HTML", "H00", "4", "(KHÔNG LỜI)", "bumper", "html_clips/H00.mp4", "clip dựng sẵn"),
+        ("2", "HTML", "H01", "24", "Đây là chặng Chọn mình", "checklist", "html_clips/H01.mp4", "clip dựng sẵn"),
+        ("3", "CARD", "T1", "2.2", "(KHÔNG LỜI)", "thẻ", "html_clips/T1.mp4", "thẻ chuyển mục"),
+        ("4", "RENDER", "13-01", "6", "Xin chúc mừng bạn", "HOST", "bai11_video_v2.csv", "CÓ TIẾNG — Omni bake giọng nháp"),
+        ("5", "ANH", "A1", "28", "Hành trình lựa chọn", "sơ đồ", "assets/A1_hanh-trinh_9x16.png", "ảnh docx"),
+    ]
+    def o(r, c, v):
+        return (f'<c r="{chr(65+c)}{r}" t="inlineStr"><is><t>'
+                f'{v.replace("&","&amp;").replace("<","&lt;")}</t></is></c>')
+    rows = "".join(f'<row r="{i+1}">' + "".join(o(i + 1, j, v) for j, v in enumerate(h))
+                   + "</row>" for i, h in enumerate(hang))
+    xlsx = tmp_path / "b13.xlsx"
+    with zipfile.ZipFile(xlsx, "w") as z:
+        z.writestr("xl/worksheets/sheet1.xml",
+                   '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/'
+                   f'spreadsheetml/2006/main"><sheetData>{rows}</sheetData></worksheet>')
+    c = {x["scene"]: x for x in cb.doc_kich_ban(xlsx)}
+    assert set(c) == {"H00", "H01", "T1", "13-01", "A1"}, "phải nhận đủ 4 loại hàng"
+    assert c["H00"]["loai"] == "slide" and c["T1"]["loai"] == "slide", \
+        "'(KHÔNG LỜI)' là ghi chú -> chiếm đúng số giây bảng ghi, không đi tìm lời"
+    assert c["H01"]["loai"] == "render" and c["A1"]["loai"] == "render", \
+        "có lời thật -> ô thời gian bám giọng đọc"
+    assert c["T1"]["duration_s"] == 2.2, "phải đọc được số lẻ"
+    assert c["13-01"]["anh"] is None, "CSV sinh clip KHÔNG phải file để nhập timeline"
+    assert c["H01"]["dung_san"] and c["T1"]["dung_san"], "clip dựng sẵn -> chạy nguyên bản"
+    assert not c["A1"]["dung_san"], "ảnh tĩnh thì giãn theo giọng, không phải clip dựng sẵn"
+    assert not c["13-01"]["dung_san"]
+    assert c["13-01"]["nhep_moi"] and not c["H01"]["nhep_moi"], \
+        "chỉ clip AI ghi CÓ TIẾNG mới có khẩu hình để khớp"
+
+
 def test_doc_the_tieu_de_xls_lay_the_tieu_de_de_len_clip(tmp_path):
     """Bài 12 có 9 ảnh slide nhưng bảng chính CHỈ dùng 2 làm đoạn riêng; 7 cái còn
     lại là THẺ TIÊU ĐỀ đè 2 giây lên đầu clip ("KHÔNG dựng thành đoạn chữ tĩnh

@@ -638,13 +638,18 @@ def doc_kich_ban_xls(path) -> list:
         if o:
             hang.append(o)
 
+    # Bảng đã qua vài đời, số loại hàng tăng dần: bản đầu chỉ RENDER/SLIDE, bài 13
+    # thêm HTML (clip đồ hoạ dựng sẵn), CARD (thẻ chuyển mục 2,2s) và ANH (ảnh trong
+    # docx dùng trực tiếp). Nhận hết, rồi phân xử bằng CÓ LỜI HAY KHÔNG thay vì bằng
+    # tên loại — thêm loại mới sau này cũng không phải sửa chỗ này nữa.
+    LOAI_HOP_LE = {"RENDER", "SLIDE", "HTML", "CARD", "ANH"}
     canh = []
     for o in hang:
         loai, ma = (o.get("B") or "").upper(), (o.get("C") or "").strip()
-        if loai not in ("RENDER", "SLIDE") or not ma:
+        if loai not in LOAI_HOP_LE or not ma:
             continue                       # bỏ dòng tiêu đề / dòng trống
         try:
-            dur = float(o.get("D") or 0)
+            dur = float((o.get("D") or "0").replace(",", "."))
         except ValueError:
             dur = 0
         if dur <= 0:
@@ -657,16 +662,33 @@ def doc_kich_ban_xls(path) -> list:
         #     tha hồ CẮT BỚT cho vừa ô thời gian (cắt sạch hơn hẳn kéo giãn).
         hd = (o.get("H") or "")
         nhep_moi = "CÓ TIẾNG" in hd.upper() or "CO TIENG" in hd.upper()
+        vo = (o.get("E") or "").strip()
+        # "(KHÔNG LỜI ...)" là GHI CHÚ, không phải câu để đọc — nhận nhầm là bước
+        # khớp giọng đi tìm một câu không tồn tại trong bản thu.
+        if not vo or vo.lstrip().startswith("("):
+            vo = ""
+        # Cột 'File nguồn' chỉ dùng được khi nó trỏ tới FILE THẬT. Hàng RENDER ghi
+        # tên file CSV sinh ra clip ("bai11_video_v2.csv") — đó là nguồn tạo, không
+        # phải file để nhập vào timeline; lấy nhầm là đi tìm một file không bao giờ
+        # có. Còn hàng HTML/CARD/ANH mới ghi đúng đường dẫn media.
+        nguon_file = (o.get("G") or "").strip()
+        if not re.search(r"\.(mp4|mov|mkv|avi|m4v|webm|png|jpe?g|webp|bmp)$", nguon_file, re.I):
+            nguon_file = ""
         canh.append({
             "scene": ma,
-            "loai": "slide" if loai == "SLIDE" else "render",
+            # CÓ LỜI -> ô thời gian bám theo giọng đọc; KHÔNG LỜI -> chiếm đúng số
+            # giây bảng ghi rồi đẩy phần sau lùi lại (thẻ chuyển mục, bumper, ảnh
+            # để người xem chụp màn hình đều thuộc nhóm này).
+            "loai": "render" if vo else "slide",
             "duration_s": dur,
-            # Slide KHÔNG có lời — ô VO của nó là ghi chú '(KHÔNG LỜI — ...)', không
-            # phải câu để đọc. Nhận nhầm là bước khớp giọng đi tìm một câu không tồn
-            # tại trong bản thu.
-            "vo": "" if loai == "SLIDE" else (o.get("E") or "").strip(),
-            "anh": (o.get("G") or "").strip() or None,
-            "nhep_moi": nhep_moi and loai == "RENDER",
+            "vo": vo,
+            "anh": nguon_file or None,
+            "nhep_moi": nhep_moi and bool(vo),
+            # CLIP DỰNG SẴN (html_clips/) — đồ hoạ đã render chuẩn từng khung, độ dài
+            # khớp đúng cột 'Dài (s)' (đo bài 13: H00=4, H01=24, H07=17, T1..T5=2,2).
+            # Co giãn hay cắt bớt là phá nhịp hiệu ứng bên trong và mất khoảng lặng
+            # chủ đích (H07 có 7 giây chờ ký tên ở cuối). Phải phát NGUYÊN BẢN.
+            "dung_san": bool(re.search(r"\.(mp4|mov|mkv|avi|m4v|webm)$", nguon_file, re.I)),
         })
     if not canh:
         raise RuntimeError(f"Không đọc được dòng RENDER/SLIDE nào trong {path}")
@@ -1099,11 +1121,27 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
                     bu += tong - ho
                     continue
                 for j, x in enumerate(nd):
-                    vs = 0.0 if dau_tien else vung[x["scene"]][0]
+                    # Kéo về mốc 0 chỉ khi CHƯA CÓ GÌ đứng trước — để phủ khoảng lặng
+                    # đầu file voice. Bài 13 mở bằng bumper H00 rồi mới tới H01: cứ
+                    # kéo H01 về 0 thì ô của nó phình từ 23,2s lên 26,2s, đủ để nuốt
+                    # trọn clip 24s và làm hỏng luật "clip dựng sẵn chạy nguyên bản".
+                    vs = 0.0 if (dau_tien and not lich) else vung[x["scene"]][0]
                     dau_tien = False
                     ve = (vung[nd[j + 1]["scene"]][0] if j + 1 < len(nd)
                           else vung[x["scene"]][1])
                     ve = max(ve, vs + 0.2)
+                    # Clip dựng sẵn phải chạy TRỌN độ dài gốc: phần dôi ra so với ô
+                    # giọng đọc đẩy tiếng phía sau lùi lại, y như một slide. Không
+                    # làm thế thì H07 (17s, có 7 giây chờ ký tên ở cuối) bị cắt còn
+                    # 9,1s — mất sạch khoảng lặng chủ đích.
+                    if x.get("dung_san"):
+                        goc_dai = probe(nguon[x["scene"]])["duration_us"] / 1e6
+                        if goc_dai > (ve - vs) + 0.05:
+                            lich.append((x, bu + vs, bu + vs + goc_dai, vung[x["scene"]][2]))
+                            audio_segs.append((vs, ve, bu + vs))
+                            bu += goc_dai - (ve - vs)
+                            t = bu + ve
+                            continue
                     lich.append((x, bu + vs, bu + ve, vung[x["scene"]][2]))
                     # CẮT TIẾNG THEO TỪNG DÒNG (người dùng yêu cầu): mỗi cảnh một
                     # đoạn audio riêng thay vì một khối liền. Cùng trỏ vào một file
@@ -1257,10 +1295,13 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             if k == len(lich) - 1:
                 het = max(het, het_timeline)
             muon = max(200_000, het - bd)
-            if cn["scene"] not in dung_duoc:          # slide: luôn phủ trọn ô
+            if cn["scene"] not in dung_duoc:          # ảnh tĩnh: luôn phủ trọn ô
                 ct = bd + muon
                 continue
             _, _, cl = dung_duoc[cn["scene"]]
+            if cn.get("dung_san"):                   # clip dựng sẵn: chạy nguyên bản
+                ct = bd + min(cl, muon)
+                continue
             sp = cl / muon
             if sp < san:
                 sp, sd = san, cl
@@ -1317,10 +1358,17 @@ def build_from_csv(csv_path, source_dir, voice_path, out_name, do_write=True,
             con_tro = o_bd + o_dai_muon
             continue
 
+        ci, cat_dau, con_lai = dung_duoc[cnh["scene"]]
+        if cnh.get("dung_san"):
+            # Đồ hoạ dựng sẵn: phát nguyên bản, tốc độ 1.0, không cắt không giãn.
+            dai = min(con_lai, o_dai_muon)
+            them_hinh(goc, f"{cnh['scene']} — {goc.stem}", 0, dai, o_bd, dai, 1.0, i)
+            con_tro = o_bd + dai
+            continue
+
         # Cắt bỏ khoảng LẶNG ĐẦU của clip rồi mới kéo giãn: phần còn lại (từ lúc
         # miệng bắt đầu mấp máy) trải đúng vào ô thời gian mà giọng thật đang đọc
         # cảnh này -> khẩu hình bám giọng. Xem _diem_noi() cho số đo thật.
-        ci, cat_dau, con_lai = dung_duoc[cnh["scene"]]
         speed = con_lai / o_dai_muon
 
         if speed < san_toc:
